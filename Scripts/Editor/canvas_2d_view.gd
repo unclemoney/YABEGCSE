@@ -11,7 +11,7 @@ extends Node2D
 signal canvas_input(event: InputEvent, world_pos: Vector2, snapped_pos: Vector2)
 
 const MIN_GRID_SCREEN_PX := 12.0
-const ZOOM_MIN := 0.1
+const ZOOM_MIN := 0.05  # low enough to frame an imported GCS level (~17k units)
 const ZOOM_MAX := 8.0
 const ZOOM_STEP := 1.25
 

@@ -17,6 +17,8 @@ static var _missing: Dictionary = {}  # name -> true (dedup set)
 static var _scan_cache: Array[String] = []
 static var _scanned := false
 static var _placeholder: ImageTexture
+static var _base_index: Dictionary = {}  # lowercase basename -> relative base (no ext)
+static var _base_indexed := false
 
 
 ## exists(name) -> bool
@@ -93,6 +95,26 @@ static func scan() -> Array[String]:
 	_scan_cache.sort()
 	_scanned = true
 	return _scan_cache.duplicate()
+
+
+## find_base(bare_name) -> String
+##
+## M5 importer lookup: maps a bare GCS art reference ("BRKWL1",
+## "brkwl1.vgr", "..\\..\\$RP9A\\BASICLIB\\BRKWL1.VGR") to the
+## library-relative base name ("BASICLIB/BRKWL1"), case-insensitive on
+## the file basename. First sorted match wins on collisions. "" on miss.
+static func find_base(bare_name: String) -> String:
+	if bare_name.is_empty():
+		return ""
+	if not _base_indexed:
+		for name in scan():
+			var base := name.trim_suffix(".png")
+			var key := base.get_file().to_lower()
+			if not _base_index.has(key):
+				_base_index[key] = base
+		_base_indexed = true
+	var key := bare_name.replace("\\", "/").get_file().get_basename().to_lower()
+	return str(_base_index.get(key, ""))
 
 
 ## resolve(tex_name) -> Texture2D

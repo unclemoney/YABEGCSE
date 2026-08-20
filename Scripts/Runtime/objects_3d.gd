@@ -85,6 +85,13 @@ func _spawn(obj: Dictionary) -> void:
 		var size := ObjectOps.get_extent(obj)
 		var tex_size := sprite.texture.get_size()
 		sprite.scale = Vector3(size.x / tex_size.x, size.y / tex_size.y, 1.0)
+	elif (type == "wall_object" or type == "billboard") and obj.get("params", {}).has("size"):
+		# M5 imports carry an explicit world size (GCS hsize/vsize), so the
+		# sprite stretches per-axis instead of using one uniform scale.
+		var size := ObjectOps.get_extent(obj)
+		var tex_size := Vector2(sprite.texture.get_size())
+		sprite.scale = Vector3(size.x / tex_size.x, size.y / tex_size.y, 1.0)
+		sprite.position.y = z + size.y * 0.5
 	add_child(sprite)
 	if type == "fluid" and frames.size() > 1:
 		_fluids.append({"sprite": sprite, "frames": frames, "fps": float(obj["params"].get("fps", 8.0))})

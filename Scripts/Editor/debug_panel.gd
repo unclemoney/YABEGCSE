@@ -10,11 +10,17 @@ extends Control
 signal fixture_load_requested(path: String)
 signal texture_pick_requested
 signal debug_place_objects
+signal debug_import_fixture
 
 var _panel: PanelContainer
 var _list: Label
 var _missing_textures: Array = []
 var _flags_text := ""
+var _import_text := ""
+
+## Cap for the rendered import report so a chatty import can't blow up
+## the panel layout.
+const MAX_REPORT_LINES := 14
 
 
 ## _ready()
@@ -61,10 +67,47 @@ func set_missing_textures(names: Array) -> void:
 	_render()
 
 
+## set_import_report(report)
+##
+## The GCS importer's report (meta.import_report shape): counts plus the
+## skipped/unreconstructable list. Empty dict clears the block.
+func set_import_report(report: Dictionary) -> void:
+	if report.is_empty():
+		_import_text = ""
+		_render()
+		return
+	var lines: Array[String] = []
+	lines.append("GCS import: %d imported, %d skipped" % [
+		int(report.get("imported", 0)), (report.get("skipped", []) as Array).size(),
+	])
+	for line in report.get("notes", []):
+		lines.append("note: %s" % _clip(str(line)))
+	for line in report.get("skipped", []):
+		lines.append("skip: %s" % _clip(str(line)))
+	if lines.size() > MAX_REPORT_LINES:
+		var hidden := lines.size() - MAX_REPORT_LINES
+		lines = lines.slice(0, MAX_REPORT_LINES)
+		lines.append("... and %d more (see meta.import_report in the saved file)" % hidden)
+	_import_text = "\n".join(lines)
+	_render()
+
+
+## _clip(text) -> String
+##
+## Long report lines (DOS paths) would stretch the panel past the screen;
+## truncate them. The full text is always in meta.import_report.
+func _clip(text: String) -> String:
+	if text.length() <= 80:
+		return text
+	return text.substr(0, 77) + "..."
+
+
 func _render() -> void:
 	if _list == null:
 		return
 	var text := _flags_text
+	if not _import_text.is_empty():
+		text = _import_text + "\n" + text
 	if not _missing_textures.is_empty():
 		text += "\nMissing textures: " + ", ".join(_missing_textures)
 	_list.text = "Debug — " + text
@@ -132,3 +175,7 @@ func _build_ui() -> void:
 	objects.text = "Place test object set"
 	objects.pressed.connect(func() -> void: debug_place_objects.emit())
 	buttons.add_child(objects)
+	var gcs := Button.new()
+	gcs.text = "Import GCS fixture"
+	gcs.pressed.connect(func() -> void: debug_import_fixture.emit())
+	buttons.add_child(gcs)

@@ -11,6 +11,7 @@ signal new_requested
 signal open_path_selected(path: String)
 signal save_path_selected(path: String)
 signal clear_confirmed
+signal import_confirmed(path: String)
 signal fixture_load_requested(path: String)
 signal texture_picked(name: String)
 signal texture_pick_requested
@@ -18,12 +19,16 @@ signal texture_picker_closed
 signal brush_type_selected(type: String)
 signal brush_art_requested
 signal debug_place_objects
+signal debug_import_fixture
 
 var _mode_label: Label
 var _status_label: Label
 var _open_dialog: FileDialog
 var _save_dialog: FileDialog
 var _clear_dialog: ConfirmationDialog
+var _import_dialog: FileDialog
+var _import_confirm: ConfirmationDialog
+var _pending_import := ""
 var _debug_panel: DebugPanel
 var _texture_picker: TexturePicker
 var _crosshair: ColorRect
@@ -80,6 +85,15 @@ func set_missing_textures(names: Array) -> void:
 		_debug_panel.set_missing_textures(names)
 
 
+## set_import_report(report)
+##
+## Pass-through to the debug panel: the GCS importer's skipped /
+## unreconstructable list. Empty dict clears the block.
+func set_import_report(report: Dictionary) -> void:
+	if _debug_panel != null:
+		_debug_panel.set_import_report(report)
+
+
 ## open_texture_picker()
 ##
 ## Releases the mouse so the picker is clickable; texture_picker_closed
@@ -109,6 +123,7 @@ func _build_ui() -> void:
 	file_popup.add_item("New", 0)
 	file_popup.add_item("Open...", 1)
 	file_popup.add_item("Save As...", 2)
+	file_popup.add_item("Import GCS Level...", 3)
 	file_popup.id_pressed.connect(_on_file_menu_id_pressed)
 	top_bar.add_child(file_menu)
 
@@ -166,6 +181,22 @@ func _build_ui() -> void:
 	_clear_dialog.confirmed.connect(func() -> void: clear_confirmed.emit())
 	add_child(_clear_dialog)
 
+	# M5: GCS import. Picking the univ??.txt arms a destructive-confirm
+	# dialog; confirming emits import_confirmed with the chosen path.
+	_import_dialog = FileDialog.new()
+	_import_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	_import_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	_import_dialog.size = Vector2i(600, 400)
+	_import_dialog.add_filter("univ*.txt", "GCS level (univ??.txt)")
+	_import_dialog.file_selected.connect(_on_import_file_selected)
+	add_child(_import_dialog)
+
+	_import_confirm = ConfirmationDialog.new()
+	_import_confirm.dialog_text = "Importing a GCS level replaces the current level and cannot be undone."
+	_import_confirm.ok_button_text = "Import"
+	_import_confirm.confirmed.connect(func() -> void: import_confirmed.emit(_pending_import))
+	add_child(_import_confirm)
+
 	_debug_panel = DebugPanel.new()
 	_debug_panel.visible = false
 	add_child(_debug_panel)
@@ -178,6 +209,9 @@ func _build_ui() -> void:
 	)
 	_debug_panel.debug_place_objects.connect(
 		func() -> void: debug_place_objects.emit()
+	)
+	_debug_panel.debug_import_fixture.connect(
+		func() -> void: debug_import_fixture.emit()
 	)
 
 	_texture_picker = TexturePicker.new()
@@ -208,6 +242,13 @@ func _on_file_menu_id_pressed(id: int) -> void:
 			_open_dialog.popup_centered()
 		2:
 			_save_dialog.popup_centered()
+		3:
+			_import_dialog.popup_centered()
+
+
+func _on_import_file_selected(path: String) -> void:
+	_pending_import = path
+	_import_confirm.popup_centered()
 
 
 func _on_edit_menu_id_pressed(id: int) -> void:

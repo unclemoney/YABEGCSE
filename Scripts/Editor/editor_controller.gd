@@ -56,6 +56,7 @@ func _ready() -> void:
 		_ui_panels.open_path_selected.connect(open_level)
 		_ui_panels.save_path_selected.connect(save_level)
 		_ui_panels.clear_confirmed.connect(_on_clear_level_confirmed)
+		_ui_panels.import_confirmed.connect(_on_import_confirmed)
 		_ui_panels.fixture_load_requested.connect(open_level)
 		_ui_panels.texture_picked.connect(_on_texture_picked)
 		_ui_panels.texture_pick_requested.connect(_on_texture_pick_requested.bind({}))
@@ -63,6 +64,7 @@ func _ready() -> void:
 		_ui_panels.brush_type_selected.connect(_on_brush_type_selected)
 		_ui_panels.brush_art_requested.connect(_on_brush_art_requested)
 		_ui_panels.debug_place_objects.connect(_on_debug_place_objects)
+		_ui_panels.debug_import_fixture.connect(_on_debug_import_fixture)
 	_apply_mode()
 
 
@@ -99,6 +101,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		# Debug command: load the two-room fixture (see DebugPanel buttons).
 		open_level("res://Tests/Fixtures/level_geometry_v0.json")
 		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("debug_import_fixture"):
+		# Debug command (F10): import the bundled DOS 1.3 fixture pair.
+		_on_debug_import_fixture()
+		get_viewport().set_input_as_handled()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		var key := event as InputEventKey
 		if key.ctrl_pressed and key.keycode == KEY_Z:
@@ -113,6 +119,8 @@ func new_level() -> void:
 	level_data = LevelData.create_empty()
 	_current_path = ""
 	_rebind_level_data()
+	if _ui_panels != null:
+		_ui_panels.set_import_report({})
 
 
 ## open_level(path)
@@ -133,6 +141,7 @@ func open_level(path: String) -> void:
 	_undo_stack.clear()
 	_rebind_level_data()
 	if _ui_panels != null:
+		_ui_panels.set_import_report({})
 		_ui_panels.set_status("Opened: " + path)
 
 
@@ -218,6 +227,86 @@ func _on_debug_place_objects() -> void:
 			_ui_panels.set_status("Test object set placed.")
 
 
+## _on_debug_import_fixture()
+##
+## Debug-panel command: import the bundled DOS 1.3 fixture pair. Debug
+## commands skip the confirm dialog (same as fixture loads).
+func _on_debug_import_fixture() -> void:
+	_on_import_confirmed("res://Tests/Fixtures/UNIV0.TXT")
+
+
+## _on_import_confirmed(univ_path)
+##
+## M5 destructive-confirmed import: reads univ + sibling objdef (same
+## level number), expands objdef "include" lines against the filesystem,
+## runs the importer, and REPLACES the level. Outside the undo stack per
+## charter (imports are confirmed destructive ops). Any read failure
+## leaves the current level untouched.
+func _on_import_confirmed(univ_path: String) -> void:
+	var univ_text := FileAccess.get_file_as_string(univ_path)
+	if univ_text.is_empty() and FileAccess.get_open_error() != OK:
+		_report_error("Could not read file: " + univ_path)
+		return
+	var objdef_path := _derive_objdef_path(univ_path)
+	var objdef_text := FileAccess.get_file_as_string(objdef_path)
+	if objdef_text.is_empty() and FileAccess.get_open_error() != OK:
+		_report_error("Could not read objdef sibling: " + objdef_path)
+		return
+	var expanded := _expand_includes(objdef_text, objdef_path)
+	var result := GCSImporter.import_level(
+		univ_text, str(expanded["text"]), univ_path.get_file(), expanded["notes"]
+	)
+	level_data = result["level"]
+	_current_path = ""
+	_undo_stack.clear()
+	_rebind_level_data()
+	if _ui_panels != null:
+		var report: Dictionary = result["report"]
+		_ui_panels.set_import_report(report)
+		_ui_panels.set_status("Imported %d objects (%d skipped) from %s" % [
+			int(report["imported"]), (report["skipped"] as Array).size(), univ_path.get_file(),
+		])
+
+
+## _derive_objdef_path(univ_path) -> String
+##
+## univ0.txt -> objdef0.txt in the same directory (the ?? digits are the
+## level number and match across the pair).
+func _derive_objdef_path(univ_path: String) -> String:
+	var re := RegEx.create_from_string("(?i)^univ")
+	var file := re.sub(univ_path.get_file(), "objdef")
+	return univ_path.get_base_dir() + "/" + file
+
+
+## _expand_includes(objdef_text, objdef_path) -> Dictionary
+##
+## One-pass textual expansion of objdef "include <dos path>" lines: found
+## files are inlined after the directive, missing ones become a report
+## note. GCS include paths are relative to the objdef file's directory.
+## One pass only — includes-of-includes are not followed.
+func _expand_includes(objdef_text: String, objdef_path: String) -> Dictionary:
+	var notes: Array[String] = []
+	var out: Array[String] = []
+	var re := RegEx.create_from_string("(?i)^\\s*include\\s+(.+?)$")
+	var base_dir := objdef_path.get_base_dir()
+	for line in objdef_text.split("\n"):
+		out.append(line)
+		var match := re.search(line.strip_edges())
+		if match == null:
+			continue
+		var rel := match.get_string(1).strip_edges().replace("\\", "/")
+		var inc_path := (base_dir + "/" + rel).simplify_path()
+		var inc_text := FileAccess.get_file_as_string(inc_path)
+		if inc_text.is_empty() and FileAccess.get_open_error() != OK:
+			notes.append("include not found: %s (objects it defines are skipped)" % rel)
+		else:
+			out.append("; ---- begin include: %s ----" % rel)
+			out.append(inc_text)
+			out.append("; ---- end include: %s ----" % rel)
+			notes.append("include loaded: %s" % rel)
+	return {"text": "\n".join(out), "notes": notes}
+
+
 func _update_brush_status() -> void:
 	if _ui_panels != null and _tool_system != null:
 		var brush := _tool_system.get_brush()
@@ -267,6 +356,7 @@ func _on_clear_level_confirmed() -> void:
 	_undo_stack.clear()
 	_rebind_level_data()
 	if _ui_panels != null:
+		_ui_panels.set_import_report({})
 		_ui_panels.set_status("Level cleared.")
 
 

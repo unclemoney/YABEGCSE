@@ -38,6 +38,7 @@ static func build_level(root: Node3D, data: LevelData, step_height: float) -> Di
 		"sectors_skipped": 0,
 		"wall_quads": 0,
 		"collision_faces": 0,
+		"object_collision_quads": 0,
 		"floor_area": 0.0,
 		"missing_textures": [],
 	}
@@ -60,6 +61,7 @@ static func build_level(root: Node3D, data: LevelData, step_height: float) -> Di
 		else:
 			stats["sectors_skipped"] += 1
 	_build_walls(data, step_height, walls, collision, stats)
+	_build_object_collision(data, collision, stats)
 
 	_commit_groups(root, "FloorMesh", floors, FALLBACK_FLOOR_COLOR)
 	_commit_groups(root, "CeilingMesh", ceilings, FALLBACK_CEILING_COLOR)
@@ -342,6 +344,30 @@ static func _quad(
 		Vector2(ou, ya0 + ov), Vector2(u1 + ou, yb0 + ov), Vector2(u1 + ou, yb1 + ov),
 		Vector2(ou, ya0 + ov), Vector2(u1 + ou, yb1 + ov), Vector2(ou, ya1 + ov),
 	])
+
+
+## _build_object_collision(data, collision, stats)
+##
+## M5: objects with params.collide == true (imported GCS object-walls)
+## get a double-wound collision quad so the walk test bumps into them.
+## Editor-placed objects default to no collision (objects clip freely).
+static func _build_object_collision(data: LevelData, collision: PackedVector3Array, stats: Dictionary) -> void:
+	for i in range(data.objects.size()):
+		if data.flagged_objects.has(i):
+			continue
+		var obj: Variant = data.objects[i]
+		if not obj is Dictionary:
+			continue
+		if not bool((obj as Dictionary).get("params", {}).get("collide", false)):
+			continue
+		var extent := ObjectOps.get_extent(obj)
+		var center := ObjectOps.get_pos(obj)
+		# Lateral = the quad's run direction: normal rotated by +90 deg.
+		var angle := deg_to_rad(float(obj.get("angle", 0.0)) + 90.0)
+		var half := Vector2(0.0, 1.0).rotated(angle) * extent.x * 0.5
+		var z := float(obj.get("z", 0.0))
+		_quad_collision(center - half, center + half, z, z + extent.y, collision)
+		stats["object_collision_quads"] = int(stats["object_collision_quads"]) + 1
 
 
 ## _quad_collision(a2, b2, y0, y1, collision)

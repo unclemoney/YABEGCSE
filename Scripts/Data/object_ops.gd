@@ -13,7 +13,9 @@ class_name ObjectOps
 ##    "pos": [x, y], "z": float, "angle": float,
 ##    "art": "LIB/NAME"  (library-relative BASE name, no extension),
 ##    "params": {"scale": float, "fps": float (fluid),
-##               "size": [w, d] (platform),
+##               "size": [w, d] (platform; M5 also wall_object/billboard),
+##               "collide": bool (M5: object-wall blocks the walker),
+##               "gcs": Dictionary (M5 import provenance),
 ##               "views": {"1".."8": base name} (sprite_8way)}}
 
 const TYPES: Array[String] = ["billboard", "wall_object", "sprite_8way", "fluid", "platform"]
@@ -135,7 +137,9 @@ static func probe_views(art: String) -> Dictionary:
 ## validate(data)
 ##
 ## Recomputes flagged_objects. Schema-shape checks only — objects may clip
-## geometry freely. Unresolved art is not flagged here; ArtCache reports
+## geometry freely. Platforms are exempt from the art requirement (imported
+## GCS platforms are artless trigger regions; they render as translucent
+## placeholders). Unresolved art is not flagged here; ArtCache reports
 ## it to the debug panel when the renderer resolves textures.
 static func validate(data: LevelData) -> void:
 	data.flagged_objects.clear()
@@ -148,7 +152,7 @@ static func validate(data: LevelData) -> void:
 			_flag(data, i, "unknown type '%s'" % str(o.get("type", "")))
 		if not o.get("pos") is Array or (o["pos"] as Array).size() < 2:
 			_flag(data, i, "malformed pos")
-		if str(o.get("art", "")).is_empty():
+		if str(o.get("art", "")).is_empty() and str(o.get("type", "")) != "platform":
 			_flag(data, i, "no art reference")
 
 

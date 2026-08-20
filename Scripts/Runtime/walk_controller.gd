@@ -23,8 +23,16 @@ func set_level_data(data: LevelData) -> void:
 
 ## spawn(data)
 ##
-## Feet at the centroid of the first valid sector; origin fallback (void).
+## Imported GCS levels carry a meta.spawn hint ([x, y, z, theta_deg] in
+## v0 units) — use it first. Else feet at the centroid of the first valid
+## sector; origin fallback (void).
 func spawn(data: LevelData) -> void:
+	var spawn: Variant = data.meta.get("spawn")
+	if spawn is Array and (spawn as Array).size() >= 3:
+		global_position = Vector3(float(spawn[0]), float(spawn[2]), float(spawn[1]))
+		if (spawn as Array).size() >= 4:
+			rotation.y = deg_to_rad(float(spawn[3]) - 180.0)
+		return
 	for si in range(data.sectors.size()):
 		if data.flagged_sectors.has(si):
 			continue

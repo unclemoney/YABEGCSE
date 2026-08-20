@@ -1,0 +1,53 @@
+PASS: find_base: bare name
+PASS: find_base: DOS path + extension
+PASS: find_base: case-insensitive
+PASS: find_base: miss returns empty
+PASS: fixtures readable
+PASS: real fixture: 174 objects imported (got 174)
+PASS: real fixture: objects array size
+PASS: real fixture: 4 unknown-handle groups (got 4)
+PASS: real fixture: skipped handles listed
+PASS: real fixture: missing art noted
+PASS: real fixture: door semantics noted
+PASS: wall: type
+PASS: wall: art resolved (BASICLIB/BRKWL1)
+PASS: wall: anchor shifted to centre along run direction
+PASS: wall: theta 16384 -> angle 0 (got 0.0)
+PASS: wall: size in units
+PASS: wall: collides by default
+PASS: wall: provenance bag
+PASS: alias: handle 4 located
+PASS: alias: art inherited from handle 3
+PASS: alias: wider diagonal size
+PASS: alias: theta -24576 (-135 deg) -> angle 225
+PASS: platform: type
+PASS: platform: handle
+PASS: platform: position
+PASS: platform: z
+PASS: platform: size from opvals
+PASS: fluid: type
+PASS: fluid: unresolved art kept as bare guess
+PASS: fluid: default fps
+PASS: spawn: position hint
+PASS: real fixture: no flagged objects
+PASS: synthetic: 3 imported (got 3)
+PASS: synthetic: malformed objdef + malformed univ + unknown handle skipped (got 3)
+PASS: synthetic: unsupported species noted
+PASS: synthetic: unknown handle reported
+PASS: synthetic: bitdontbump (64) clears collide
+PASS: synthetic: species 2 -> billboard
+PASS: synthetic: z converts cm -> units
+PASS: synthetic: red-box opvals preserved
+PASS: synthetic: alias art + theta -8192 (-45 deg) -> angle 135
+PASS: synthetic: spawn hint
+PASS: round-trip: imported level re-parses as valid v0 JSON
+PASS: round-trip: object count
+PASS: round-trip: geometry section stays empty
+PASS: round-trip: import report survives
+PASS: round-trip: object position survives
+PASS: round-trip: params.gcs survives
+PASS: round-trip: format id
+PASS: round-trip: spawn survives
+PASS: collision: 127 object-wall quads (got 127)
+PASS: collision: body exists for a geometry-less import
+ALL TESTS PASSED

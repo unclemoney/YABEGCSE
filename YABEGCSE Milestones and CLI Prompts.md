@@ -146,6 +146,19 @@ billboard / sprite_8way entries, plus the import report). Plan mode:
 produce the plan only.
 ```
 
+### Session 6 — M6: environment + feel
+```
+Read the three YABEGCSE documents. Implement M6 per its acceptance
+criteria: fog (color/near/far), sky modes (flat / horizon strip with an
+art-library reference), and ambient light — all editor-settable per level
+and stored in the v0 `environment` section; void rendering honors the
+level's void behavior. Movement feel: a minimalist set of
+player-preference knobs (walk speed, mouse sensitivity, eye height, step
+height) persisted as editor settings. Keep tolerate + flag: malformed
+environment data falls back to defaults plus a debug-panel note, never a
+crash. Plan mode: produce the plan only.
+```
+
 ## 3. Standing instructions for every CLI session
 
 - Godot 4.4.1, GDScript only. No plugins, no native code.
