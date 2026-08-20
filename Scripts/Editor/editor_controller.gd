@@ -51,6 +51,7 @@ func _ready() -> void:
 		_ui_panels.open_path_selected.connect(open_level)
 		_ui_panels.save_path_selected.connect(save_level)
 		_ui_panels.clear_confirmed.connect(_on_clear_level_confirmed)
+		_ui_panels.fixture_load_requested.connect(open_level)
 	_apply_mode()
 
 
@@ -80,6 +81,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("debug_panel"):
 		if _ui_panels != null:
 			_ui_panels.toggle_debug_panel()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("debug_load_fixture"):
+		# Debug command: load the two-room fixture (see DebugPanel buttons).
+		open_level("res://Tests/Fixtures/level_geometry_v0.json")
 		get_viewport().set_input_as_handled()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		var key := event as InputEventKey
@@ -202,12 +207,18 @@ func _apply_mode() -> void:
 	var is_2d := mode == Mode.MODE_2D
 	if _canvas_2d != null:
 		_canvas_2d.visible = is_2d
-		_canvas_2d.set_process(is_2d)
-		_canvas_2d.set_process_input(is_2d)
+		if is_2d:
+			_canvas_2d.process_mode = Node.PROCESS_MODE_INHERIT
+		else:
+			_canvas_2d.process_mode = Node.PROCESS_MODE_DISABLED
 	if _viewport_3d != null:
 		_viewport_3d.visible = not is_2d
-		_viewport_3d.set_process(not is_2d)
-		_viewport_3d.set_process_input(not is_2d)
+		if is_2d:
+			_viewport_3d.process_mode = Node.PROCESS_MODE_DISABLED
+			_viewport_3d.exit_3d()
+		else:
+			_viewport_3d.process_mode = Node.PROCESS_MODE_INHERIT
+			_viewport_3d.enter_3d()
 	if _ui_panels != null:
 		_ui_panels.set_mode(mode)
 

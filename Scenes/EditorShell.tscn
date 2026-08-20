@@ -1,14 +1,18 @@
-[gd_scene load_steps=8 format=3 uid="uid://cqjprmt28u87a"]
+[gd_scene load_steps=10 format=3 uid="uid://cqjprmt28u87a"]
 
 [ext_resource type="Script" uid="uid://bxt6ayffbrmb" path="res://Scripts/Editor/editor_controller.gd" id="1_x5tj0"]
 [ext_resource type="Script" uid="uid://hbnk035tbo3q" path="res://Scripts/Editor/canvas_2d_view.gd" id="2_t0ltm"]
 [ext_resource type="Script" uid="uid://brau8q14lt0x3" path="res://Scripts/Editor/viewport_3d_view.gd" id="3_p3v6p"]
+[ext_resource type="Script" uid="uid://opos83t1nk5p" path="res://Scripts/Runtime/walk_controller.gd" id="4_d7ea7"]
 [ext_resource type="Script" uid="uid://cv1d0f6b5sixe" path="res://Scripts/Editor/tool_system.gd" id="4_jtpat"]
 [ext_resource type="Script" uid="uid://dk1ftntmhdiqa" path="res://Scripts/Editor/undo_stack.gd" id="5_d7ea7"]
 [ext_resource type="Script" uid="uid://dw5m76d4s7nuv" path="res://Scripts/Editor/ui_panels.gd" id="6_1qi2h"]
 
-[sub_resource type="PlaneMesh" id="PlaneMesh_jtpat"]
-size = Vector2(20, 20)
+[sub_resource type="Environment" id="Environment_jtpat"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_jtpat"]
+radius = 24.0
+height = 120.0
 
 [node name="EditorController" type="Node"]
 script = ExtResource("1_x5tj0")
@@ -22,15 +26,21 @@ script = ExtResource("2_t0ltm")
 visible = false
 script = ExtResource("3_p3v6p")
 
-[node name="Camera3D" type="Camera3D" parent="Viewport3D"]
-transform = Transform3D(1, 0, 0, 0, 0.838671, 0.544639, 0, -0.544639, 0.838671, 0, 8, 12)
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Viewport3D"]
+environment = SubResource("Environment_jtpat")
+
+[node name="Level3DRoot" type="Node3D" parent="Viewport3D"]
+
+[node name="Player" type="CharacterBody3D" parent="Viewport3D"]
+script = ExtResource("4_d7ea7")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Viewport3D/Player"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 60, 0)
+shape = SubResource("CapsuleShape3D_jtpat")
+
+[node name="Camera3D" type="Camera3D" parent="Viewport3D/Player"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 140, 0)
 current = true
-
-[node name="Sun" type="DirectionalLight3D" parent="Viewport3D"]
-transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 0, 0)
-
-[node name="GroundPlane" type="MeshInstance3D" parent="Viewport3D"]
-mesh = SubResource("PlaneMesh_jtpat")
 
 [node name="ToolSystem" type="Node" parent="."]
 script = ExtResource("4_jtpat")

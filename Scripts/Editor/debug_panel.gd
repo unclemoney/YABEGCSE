@@ -4,8 +4,10 @@ extends Control
 ## DebugPanel (F12)
 ##
 ## Tolerate + flag: invalid sectors and unresolved art references surface
-## here. Scaffold scope: empty panel shell per the panel construction
-## standards; M1 fills in the flagged-sector list.
+## here, plus debug commands (fixture loading) per the skill's rule that
+## new features ship with debug-panel access.
+
+signal fixture_load_requested(path: String)
 
 var _panel: PanelContainer
 var _list: Label
@@ -70,7 +72,26 @@ func _build_ui() -> void:
 	style.corner_detail = 8
 	_panel.add_theme_stylebox_override("panel", style)
 
+	var vbox := VBoxContainer.new()
+	_panel.add_child(vbox)
+
 	_list = Label.new()
 	_list.text = "Debug — no flagged sectors or walls."
 	_list.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_panel.add_child(_list)
+	_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(_list)
+
+	var buttons := HBoxContainer.new()
+	vbox.add_child(buttons)
+	var two_room := Button.new()
+	two_room.text = "Load two-room fixture"
+	two_room.pressed.connect(
+		func() -> void: fixture_load_requested.emit("res://Tests/Fixtures/level_geometry_v0.json")
+	)
+	buttons.add_child(two_room)
+	var corrupt := Button.new()
+	corrupt.text = "Load corrupt fixture"
+	corrupt.pressed.connect(
+		func() -> void: fixture_load_requested.emit("res://Tests/Fixtures/level_corrupt_v0.json")
+	)
+	buttons.add_child(corrupt)

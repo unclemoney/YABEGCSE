@@ -111,6 +111,17 @@ that milestone's acceptance criteria verbatim, in the same shape as
 Sessions 1–2. Do not pre-plan later milestones in detail — the format
 envelope and charter constrain them enough.
 
+### Session 3 — M3: 3D-mode editing
+```
+Read the three YABEGCSE documents. Implement M3: raise/lower sector floors
+and ceilings in 3D view (mouse-driven, against the walk-mode camera),
+corner-drag slopes (three corner heights define the plane), texture pick
+from the art library (ArtLibrary/, library-relative names only) for floors,
+ceilings and walls, and wall texture alignment (offset_u/offset_v). Keep
+tolerate + flag: invalid slope data degrades to flat rendering plus a red
+flag, never a crash. Plan mode: produce the plan only.
+```
+
 ## 3. Standing instructions for every CLI session
 
 - Godot 4.4.1, GDScript only. No plugins, no native code.

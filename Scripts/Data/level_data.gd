@@ -64,7 +64,7 @@ static func create_empty() -> LevelData:
 		"description": "",
 	}
 	data.environment = {
-		"fog": {"enabled": true, "color": "#202830", "near": 8.0, "far": 48.0},
+		"fog": {"enabled": true, "color": "#202830", "near": 128.0, "far": 1536.0},
 		"ambient": 1.0,
 	}
 	return data

@@ -1,0 +1,12 @@
+PASS: test level validates clean
+PASS: three rooms built
+PASS: player spawns at sector 0 centroid
+PASS: WASD: player advances
+PASS: wall collision stops the player (z=24.0)
+PASS: crossed the portal into room B
+PASS: floor step up to 16 units (y=15.99)
+PASS: tall riser blocks movement (x=488.0)
+PASS: stayed on room B floor
+PASS: walked off into the void without crashing (z=1150.0)
+PASS: void holds last floor height
+ALL TESTS PASSED

@@ -11,6 +11,7 @@ signal new_requested
 signal open_path_selected(path: String)
 signal save_path_selected(path: String)
 signal clear_confirmed
+signal fixture_load_requested(path: String)
 
 var _mode_label: Label
 var _status_label: Label
@@ -129,6 +130,9 @@ func _build_ui() -> void:
 	_debug_panel.visible = false
 	add_child(_debug_panel)
 	_debug_panel.set_anchors_preset(Control.PRESET_FULL_RECT, true)
+	_debug_panel.fixture_load_requested.connect(
+		func(path: String) -> void: fixture_load_requested.emit(path)
+	)
 
 
 func _on_file_menu_id_pressed(id: int) -> void:

@@ -1,0 +1,14 @@
+PASS: concave L-sector builds
+PASS: concave L-sector not skipped
+PASS: concave floor area matches (49152.000000 vs 49152.000000)
+PASS: donut: both sectors build
+PASS: donut floor area: hole is real, inner floor fills it (65533.737549 vs 65536.000000)
+PASS: outer floor excludes the hole (49149.737549 vs 49152.000000)
+PASS: corrupt fixture loads
+PASS: flagged sector skipped, no crash
+PASS: collision still built from valid walls
+PASS: riser quad added (6 solid + 1), got 7
+PASS: collision: (6 solid + riser) x 2 windings = 28 tris, got 28
+PASS: same-height portal is an open passage (no riser/lintel)
+PASS: no riser collision on open passage
+ALL TESTS PASSED
