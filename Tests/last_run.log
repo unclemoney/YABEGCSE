@@ -1,0 +1,12 @@
+PASS: rejects wrong format id
+PASS: rejects unsupported version
+PASS: fixture readable
+PASS: fixture loads ()
+PASS: own output reloads
+PASS: round-trip is idempotent
+PASS: unknown top-level section survives
+PASS: unknown meta field survives
+PASS: unknown geometry field survives
+PASS: gameplay section survives verbatim
+PASS: unknown section content verbatim
+ALL TESTS PASSED

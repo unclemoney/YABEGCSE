@@ -1,0 +1,58 @@
+class_name DebugPanel
+extends Control
+
+## DebugPanel (F12)
+##
+## Tolerate + flag: invalid sectors and unresolved art references surface
+## here. Scaffold scope: empty panel shell per the panel construction
+## standards; M1 fills in the flagged-sector list.
+
+var _panel: PanelContainer
+var _list: Label
+
+
+## _ready()
+##
+## Side-effects: sets modal input blocking and builds the UI.
+## Note: the full-rect anchor preset is applied by the parent (UIPanels)
+## after add_child, with keep_offsets=true — set_anchors_preset's default
+## (false) rewrites offsets to preserve the current (zero) size.
+func _ready() -> void:
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	z_index = 100
+	_build_ui()
+
+
+func toggle() -> void:
+	visible = not visible
+
+
+func _build_ui() -> void:
+	var overlay := ColorRect.new()
+	overlay.name = "Overlay"
+	overlay.color = Color(0, 0, 0, 0.6)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(overlay)
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT, true)
+
+	_panel = PanelContainer.new()
+	_panel.name = "Panel"
+	_panel.custom_minimum_size = Vector2(460, 340)
+	add_child(_panel)
+	_panel.set_anchors_preset(Control.PRESET_CENTER, true)
+	_panel.offset_left = -230
+	_panel.offset_top = -170
+	_panel.offset_right = 230
+	_panel.offset_bottom = 170
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.12, 0.10, 0.14, 0.98)
+	style.border_color = Color(0.3, 0.25, 0.35, 1.0)
+	style.set_border_width_all(4)
+	style.set_corner_radius_all(20)
+	style.corner_detail = 8
+	_panel.add_theme_stylebox_override("panel", style)
+
+	_list = Label.new()
+	_list.text = "Debug — no flagged sectors. (M1 fills this in.)"
+	_list.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_panel.add_child(_list)

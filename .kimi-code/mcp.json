@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "godot-mcp": {
+      "command": "uv",
+      "args": [
+        "run",
+        "C:/Users/danie/Documents/dicerogue/DiceRogue/addons/gdai-mcp-plugin-godot/gdai_mcp_server.py"
+      ]
+    },
+    "pixellab": {
+      "url": "https://api.pixellab.ai/mcp",
+      "headers": {
+        "Authorization": "Bearer 9c420bfc-7740-4543-932a-ab1a98b484e0"
+      }
+    }
+  }
+}

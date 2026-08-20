@@ -1,0 +1,35 @@
+{
+	"header": {
+		"format": "yabegcse-level",
+		"version": 0,
+		"generator": "fixture",
+		"future_header_flag": true
+	},
+	"meta": {
+		"name": "Roundtrip Fixture",
+		"author": "test",
+		"description": "fixture",
+		"future_meta_field": {"nested": [1, 2, 3]}
+	},
+	"environment": {
+		"fog": {"enabled": true, "color": "#304050", "near": 10.0, "far": 60.0},
+		"ambient": 0.7
+	},
+	"geometry": {
+		"points": [],
+		"walls": [],
+		"sectors": [],
+		"future_geometry_field": "preserve me"
+	},
+	"objects": [],
+	"art": {"palette": "$RP9A"},
+	"gameplay": {
+		"triggers": [{"id": 1, "kind": "door", "at": [4, 7]}],
+		"registers": {"r0": 0},
+		"music": "track01.wav"
+	},
+	"future_section": {
+		"experimental": true,
+		"values": [1, 2, 3]
+	}
+}
