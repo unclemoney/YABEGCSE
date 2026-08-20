@@ -27,6 +27,24 @@ func toggle() -> void:
 	visible = not visible
 
 
+## set_flags(flagged_sectors, flagged_walls)
+##
+## One line per flagged sector/wall with its reason. Annotations are
+## computed by GeometryOps.validate() — this panel only displays them.
+func set_flags(flagged_sectors: Dictionary, flagged_walls: Dictionary) -> void:
+	if _list == null:
+		return
+	var lines: Array[String] = []
+	for id in flagged_sectors:
+		lines.append("Sector %d: %s" % [id, flagged_sectors[id]])
+	for id in flagged_walls:
+		lines.append("Wall %d: %s" % [id, flagged_walls[id]])
+	if lines.is_empty():
+		_list.text = "Debug — no flagged sectors or walls."
+	else:
+		_list.text = "\n".join(lines)
+
+
 func _build_ui() -> void:
 	var overlay := ColorRect.new()
 	overlay.name = "Overlay"
@@ -53,6 +71,6 @@ func _build_ui() -> void:
 	_panel.add_theme_stylebox_override("panel", style)
 
 	_list = Label.new()
-	_list.text = "Debug — no flagged sectors. (M1 fills this in.)"
+	_list.text = "Debug — no flagged sectors or walls."
 	_list.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_panel.add_child(_list)

@@ -29,6 +29,23 @@ var gameplay: Dictionary = {}
 ## Unknown top-level sections, plus unknown geometry fields under
 ## the "geometry" key. Written back verbatim on save.
 var unknown_sections: Dictionary = {}
+## Computed validity annotations (tolerate + flag). Recomputed by
+## GeometryOps.validate() after every load and mutation. NEVER serialized.
+var flagged_sectors: Dictionary = {}  # sector id -> reason String
+var flagged_walls: Dictionary = {}  # wall id -> reason String
+
+## Geometry schema (v0, locked in the M1 plan):
+##   points:  [[x, y], ...]            world units, 1 unit = 6 mm
+##   walls:   {"a": int, "b": int,     directed segment over point ids
+##             "front": int,           sector left of a->b
+##             "back": int,            sector right of a->b; -1 = solid.
+##                                     back != -1 IS a portal wall.
+##             "texture": String, "offset_u": float, "offset_v": float}
+##   sectors: {"walls": [wall ids],    ordered closed outer loop
+##             "inner": [[wall ids]],  inner loops (sector-within-sector)
+##             "floor_height": float, "ceiling_height": float,
+##             "floor_texture": String, "ceiling_texture": String,
+##             "flags": int}           reserved, 0
 
 
 ## create_empty() -> LevelData

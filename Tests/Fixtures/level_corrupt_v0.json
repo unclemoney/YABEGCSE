@@ -1,0 +1,31 @@
+{
+	"header": {
+		"format": "yabegcse-level",
+		"version": 0,
+		"generator": "fixture"
+	},
+	"meta": {
+		"name": "Corrupt",
+		"author": "test",
+		"description": "deliberately invalid geometry: unsplit crossings, zero-length wall, out-of-range point"
+	},
+	"environment": {},
+	"geometry": {
+		"points": [[0, 0], [128, 0], [128, 128], [0, 128], [64, -64], [64, 192]],
+		"walls": [
+			{"a": 0, "b": 1, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 1, "b": 2, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 2, "b": 3, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 3, "b": 0, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 4, "b": 5, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 0, "b": 0, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 99, "b": 0, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0}
+		],
+		"sectors": [
+			{"walls": [0, 1, 2, 3], "inner": [], "floor_height": 0.0, "ceiling_height": 256.0, "floor_texture": "", "ceiling_texture": "", "flags": 0}
+		]
+	},
+	"objects": [],
+	"art": {},
+	"gameplay": {}
+}

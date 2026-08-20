@@ -185,7 +185,10 @@ This agent has file system, shell, search, and documentation tools. Prefer them 
 - **Level Data**: `LevelData` Resource class (`Scripts/Data/level_data.gd`), owned by `EditorController`
 - **Serializer**: `LevelSerializer` class (`Scripts/Data/level_serializer.gd`), instantiated by `EditorController`; strings in/out, never touches the filesystem; unknown sections round-trip via `LevelData.unknown_sections`
 - **Mesh Builder**: `SectorMeshBuilder` class, reads `LevelData`, produces Godot meshes (M2, not yet implemented)
-- **Milestones**: M1 (2D canvas + sector drawing), M2 (mesh generator + walk mode), M3 (3D editing), M4 (objects), M5 (converter), M6 (environment), M7 (gameplay). Session 0 scaffolding is done (app shell, 2D/3D toggle, serializer harness).
+- **Milestones**: M1 done (2D canvas, sector loop drawing, auto-split, portals, inner loops, tolerate+flag, 3-deep undo, save/load), M2 (mesh generator + walk mode), M3 (3D editing), M4 (objects), M5 (converter), M6 (environment), M7 (gameplay).
+- **Geometry Layer**: `GeometryOps` (`Scripts/Data/geometry_ops.gd`) — static, pure functions over LevelData; all mutation/validation lives here. Schema v0 documented in `level_data.gd`.
+- **Tools**: `DrawSectorTool` (`Scripts/Editor/tools/draw_sector_tool.gd`) — RefCounted, active by default; commit_loop / request_delete go through `ToolSystem` (one loop = one undo step).
+- **Tests**: three headless suites — `Tests/SerializerRoundTripTest.gd`, `Tests/GeometryOpsTest.gd`, `Tests/EditorShellTest.gd` (integration: drives EditorShell with synthetic input events). Run each with `--headless -s`. **Run a filesystem rescan in the editor after adding new `class_name` scripts** or headless runs fail with "not declared in the current scope" (stale `global_script_class_cache.cfg`).
 - **Debug Panel**: Press `F12` in editor (`Scripts/Editor/debug_panel.gd`). All new features need debug commands there.
 
 ---

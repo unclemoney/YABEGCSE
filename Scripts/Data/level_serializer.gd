@@ -63,6 +63,7 @@ func load_from_json(text: String) -> LevelData:
 			data.walls = geometry["walls"].duplicate(true)
 		if geometry.get("sectors") is Array:
 			data.sectors = geometry["sectors"].duplicate(true)
+		_normalize_geometry(data)
 		var leftover := {}
 		for key in geometry:
 			if not KNOWN_GEOMETRY_FIELDS.has(key):
@@ -72,8 +73,36 @@ func load_from_json(text: String) -> LevelData:
 	for key in root:
 		if not KNOWN_SECTIONS.has(key):
 			data.unknown_sections[key] = root[key]
-	# TODO M1: compute validity annotations (red-flag sectors) here at load.
+	# TODO M1 done: validity annotations are computed at load, never stored.
+	GeometryOps.validate(data)
 	return data
+
+
+## _normalize_geometry(data)
+##
+## JSON.parse decodes every number as float; the geometry schema has int
+## fields (indices, sector refs, flags). Casts them back so runtime code
+## and re-serialization see stable types (round-trip idempotency).
+static func _normalize_geometry(data: LevelData) -> void:
+	for i in range(data.points.size()):
+		var p: Array = data.points[i]
+		if p.size() >= 2:
+			data.points[i] = [float(p[0]), float(p[1])]
+	for w in data.walls:
+		w["a"] = int(w.get("a", -1))
+		w["b"] = int(w.get("b", -1))
+		w["front"] = int(w.get("front", -1))
+		w["back"] = int(w.get("back", -1))
+	for s in data.sectors:
+		var walls: Array = s.get("walls", [])
+		for i in range(walls.size()):
+			walls[i] = int(walls[i])
+		for loop in s.get("inner", []):
+			for i in range(loop.size()):
+				loop[i] = int(loop[i])
+		s["floor_height"] = float(s.get("floor_height", 0.0))
+		s["ceiling_height"] = float(s.get("ceiling_height", 256.0))
+		s["flags"] = int(s.get("flags", 0))
 
 
 ## save_to_json(data) -> String

@@ -1,0 +1,18 @@
+PASS: shell instantiates with all domains wired
+PASS: drawn loop closes into one sector
+PASS: four walls from clicks
+PASS: drawn sector validates clean
+PASS: undo removes the drawn sector
+PASS: undo restores empty point table
+PASS: second undo is a harmless no-op
+PASS: hover + Delete removes the sector
+PASS: delete removes orphaned points
+PASS: two adjacent rooms drawn via input
+PASS: shared edge became a portal wall
+PASS: new level resets state
+PASS: saved level reloads with both rooms
+PASS: portal survives save/load
+PASS: reloaded level validates clean
+PASS: clear level wipes geometry
+PASS: clear level wipes points
+ALL TESTS PASSED

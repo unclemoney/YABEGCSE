@@ -1,0 +1,47 @@
+PASS: square loop returns sector 0
+PASS: one sector created
+PASS: four walls created
+PASS: four points created
+PASS: all walls solid, front = sector 0
+PASS: clean square validates without flags
+PASS: crossing vertex inserted at (64, 128)
+PASS: crossing vertex inserted at (128, 64)
+PASS: 10 points after splits (4 + 4 + 2)
+PASS: 12 walls after splits (4 + 2 splits + 6 ring edges)
+PASS: partial 2D overlap flags both sectors
+PASS: exactly one portal wall (shared half-edge)
+PASS: T-junction split: 4 + 1 split + 3 new = 8 walls, got 8
+PASS: T-junction attachment validates clean
+PASS: two sectors
+PASS: shared edge reuses one wall (4 + 3)
+PASS: portal wall exists
+PASS: portal joins sectors 0 and 1
+PASS: adjacent rooms validate clean
+PASS: inner loop becomes sector 1
+PASS: outer sector records the inner loop
+PASS: inner loop walls are two-sided (front 1, back 0)
+PASS: inner loop (sector-within-sector) validates clean
+PASS: corrupt fixture loads without crashing
+PASS: walls flagged at load
+PASS: sector 0 flagged at load
+PASS: crossing-without-split detected
+PASS: zero-length wall detected
+PASS: out-of-range point reference detected
+PASS: splitting at the crossing clears the flag
+PASS: sector removed
+PASS: exclusive walls removed, shared wall kept
+PASS: orphaned points removed
+PASS: shared portal reverted to solid
+PASS: delete leaves a clean level
+PASS: undo pops latest
+PASS: undo pops second
+PASS: undo pops third
+PASS: 3-deep: fourth pop is empty
+PASS: validity annotations are never serialized
+PASS: populated geometry reloads
+PASS: three sectors survive the round-trip
+PASS: inner loop survives the round-trip
+PASS: geometry round-trip is idempotent
+PASS: two-room fixture loads
+PASS: two-room fixture validates clean
+ALL TESTS PASSED
