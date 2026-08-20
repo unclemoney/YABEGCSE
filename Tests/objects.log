@@ -1,0 +1,41 @@
+PASS: place: one object
+PASS: place: type + extension stripped (SOBJ_LIB/BARSTOOL)
+PASS: place: position
+PASS: move: pos + z
+PASS: rotate: 15 degrees
+PASS: z nudge
+PASS: delete: empty
+PASS: undo snapshot captured before place
+PASS: undo restore removes the object
+PASS: round-trip parses
+PASS: all five objects survive
+PASS: type survives
+PASS: pos survives typed
+PASS: views map survives
+PASS: no flags on clean round-trip
+PASS: front view for 0 deg
+PASS: view 2 for 45 deg
+PASS: back view for 180 deg
+PASS: wraps near 360
+PASS: missing view falls back to mirrored partner
+PASS: nearest view when partner absent
+PASS: no views -> empty name
+PASS: BUG 8-view set probed (8 found)
+PASS: digit substituted mid-name
+PASS: fluid frames discovered (3)
+PASS: static billboard: one frame
+PASS: empty art: no frames, no crash
+PASS: unknown type + bad pos flagged
+PASS: non-dict flagged
+PASS: empty art flagged
+PASS: exactly three flags
+PASS: billboard hit face-on
+PASS: hit distance sane
+PASS: ray above the quad misses
+PASS: platform hit from above
+PASS: outside platform footprint misses
+PASS: one sprite per object
+PASS: billboard mode set
+PASS: alpha-keyed discard set
+PASS: fluid textured
+ALL TESTS PASSED

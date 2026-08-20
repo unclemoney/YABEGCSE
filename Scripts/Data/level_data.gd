@@ -33,6 +33,7 @@ var unknown_sections: Dictionary = {}
 ## GeometryOps.validate() after every load and mutation. NEVER serialized.
 var flagged_sectors: Dictionary = {}  # sector id -> reason String
 var flagged_walls: Dictionary = {}  # wall id -> reason String
+var flagged_objects: Dictionary = {}  # object index -> reason String
 
 ## Geometry schema (v0, locked in the M1 plan):
 ##   points:  [[x, y], ...]            world units, 1 unit = 6 mm

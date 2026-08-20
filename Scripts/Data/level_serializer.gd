@@ -55,6 +55,7 @@ func load_from_json(text: String) -> LevelData:
 		data.gameplay = root["gameplay"].duplicate(true)
 	if root.get("objects") is Array:
 		data.objects = root["objects"].duplicate(true)
+		_normalize_objects(data)
 	if root.get("geometry") is Dictionary:
 		var geometry: Dictionary = root["geometry"]
 		if geometry.get("points") is Array:
@@ -112,6 +113,24 @@ static func _normalize_geometry(data: LevelData) -> void:
 				if entry is Array and entry.size() == 2:
 					clean.append([int(entry[0]), float(entry[1])])
 			s[key] = clean
+
+
+## _normalize_objects(data)
+##
+## M4: stable types for the object schema. Unknown per-object fields pass
+## through untouched (round-trip); ObjectOps.validate flags the malformed.
+static func _normalize_objects(data: LevelData) -> void:
+	for o in data.objects:
+		if not o is Dictionary:
+			continue
+		o["type"] = str(o.get("type", ""))
+		o["art"] = str(o.get("art", ""))
+		o["z"] = float(o.get("z", 0.0))
+		o["angle"] = float(o.get("angle", 0.0))
+		if o.get("pos") is Array and o["pos"].size() >= 2:
+			o["pos"] = [float(o["pos"][0]), float(o["pos"][1])]
+		if not o.get("params") is Dictionary:
+			o["params"] = {}
 
 
 ## save_to_json(data) -> String

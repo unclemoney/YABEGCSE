@@ -9,6 +9,7 @@ extends Control
 
 signal fixture_load_requested(path: String)
 signal texture_pick_requested
+signal debug_place_objects
 
 var _panel: PanelContainer
 var _list: Label
@@ -32,18 +33,20 @@ func toggle() -> void:
 	visible = not visible
 
 
-## set_flags(flagged_sectors, flagged_walls)
+## set_flags(flagged_sectors, flagged_walls, flagged_objects)
 ##
-## One line per flagged sector/wall with its reason. Annotations are
-## computed by GeometryOps.validate() — this panel only displays them.
-func set_flags(flagged_sectors: Dictionary, flagged_walls: Dictionary) -> void:
+## One line per flagged sector/wall/object with its reason. Annotations
+## are computed by GeometryOps/ObjectOps.validate — this panel displays.
+func set_flags(flagged_sectors: Dictionary, flagged_walls: Dictionary, flagged_objects: Dictionary = {}) -> void:
 	var lines: Array[String] = []
 	for id in flagged_sectors:
 		lines.append("Sector %d: %s" % [id, flagged_sectors[id]])
 	for id in flagged_walls:
 		lines.append("Wall %d: %s" % [id, flagged_walls[id]])
+	for id in flagged_objects:
+		lines.append("Object %d: %s" % [id, flagged_objects[id]])
 	if lines.is_empty():
-		_flags_text = "No flagged sectors or walls."
+		_flags_text = "No flagged sectors, walls or objects."
 	else:
 		_flags_text = "\n".join(lines)
 	_render()
@@ -125,3 +128,7 @@ func _build_ui() -> void:
 	pick.text = "Pick texture..."
 	pick.pressed.connect(func() -> void: texture_pick_requested.emit())
 	buttons.add_child(pick)
+	var objects := Button.new()
+	objects.text = "Place test object set"
+	objects.pressed.connect(func() -> void: debug_place_objects.emit())
+	buttons.add_child(objects)

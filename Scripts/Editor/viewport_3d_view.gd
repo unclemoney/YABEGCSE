@@ -29,6 +29,16 @@ var _aim := {"kind": &"none"}
 @onready var _level_root: Node3D = get_node_or_null(level_root_path)
 @onready var _player: WalkController = get_node_or_null(player_path)
 
+var _objects_3d: Objects3D
+
+
+func _ready() -> void:
+	_objects_3d = Objects3D.new()
+	_objects_3d.name = "Objects3D"
+	add_child(_objects_3d)
+	if _player != null:
+		_objects_3d.set_player(_player)
+
 
 ## set_level_data(data)
 ##
@@ -38,6 +48,8 @@ func set_level_data(data: LevelData) -> void:
 	_spawned = false
 	if _player != null:
 		_player.set_level_data(data)
+	if _objects_3d != null:
+		_objects_3d.set_level_data(data)
 
 
 ## rebuild() -> Dictionary
@@ -50,6 +62,8 @@ func rebuild() -> Dictionary:
 	if _level_root == null or _level_data == null:
 		return {}
 	var stats := SectorMeshBuilder.build_level(_level_root, _level_data, _step_height())
+	if _objects_3d != null:
+		_objects_3d.rebuild()
 	_apply_environment()
 	return stats
 
@@ -127,6 +141,23 @@ func _update_aim() -> void:
 	var origin := camera.project_ray_origin(center)
 	var dir := camera.project_ray_normal(center)
 	_aim = GeometryOps.aim_from_ray(_level_data, origin, dir)
+	# M4: an object nearer than the geometry hit wins the crosshair.
+	var obj_hit := ObjectOps.ray_pick(_level_data.objects, origin, dir)
+	if not obj_hit.is_empty():
+		var geo_dist := float(_aim.get("distance", GeometryOps.MAX_AIM_DIST))
+		if float(obj_hit["distance"]) < geo_dist:
+			var idx := int(obj_hit["object_id"])
+			var obj: Dictionary = _level_data.objects[idx]
+			var ground: Variant = Plane(Vector3.UP, float(obj.get("z", 0.0))).intersects_ray(origin, dir)
+			_aim = {
+				"kind": &"object",
+				"object_id": idx,
+				"sector_id": -1,
+				"wall_id": -1,
+				"point": obj_hit["point"],
+				"distance": obj_hit["distance"],
+				"ground_point": ground if ground != null else obj_hit["point"],
+			}
 
 
 ## _apply_environment()

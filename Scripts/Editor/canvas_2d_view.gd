@@ -127,7 +127,40 @@ func _draw() -> void:
 	if _level_data != null:
 		_draw_sectors()
 		_draw_walls()
+		_draw_objects()
 	_draw_preview()
+
+
+## _draw_objects()
+##
+## M4 markers: per-type colored circle + facing tick + type initial.
+## Flagged objects paint red (tolerate + flag); the hovered object gets a
+## white ring; the ObjectTool brush ghost follows the cursor.
+const OBJECT_COLORS := {
+	"billboard": Color(0.4, 0.9, 0.4),
+	"wall_object": Color(0.95, 0.6, 0.2),
+	"sprite_8way": Color(0.9, 0.4, 0.9),
+	"fluid": Color(0.3, 0.6, 1.0),
+	"platform": Color(0.9, 0.9, 0.3),
+}
+
+func _draw_objects() -> void:
+	for i in range(_level_data.objects.size()):
+		var o: Variant = _level_data.objects[i]
+		if not o is Dictionary:
+			continue
+		var pos := ObjectOps.get_pos(o)
+		var color: Color = OBJECT_COLORS.get(str(o.get("type", "")), Color.GRAY)
+		if _level_data.flagged_objects.has(i):
+			color = Color(1.0, 0.25, 0.25)
+		draw_circle(pos, 8.0 / _camera.zoom.x, color)
+		var facing := Vector2(0.0, 1.0).rotated(deg_to_rad(float(o.get("angle", 0.0))))
+		draw_line(pos, pos + facing * 16.0 / _camera.zoom.x, color, 2.0)
+		if _preview.get("object_hover", -1) == i:
+			draw_arc(pos, 12.0 / _camera.zoom.x, 0.0, TAU, 16, Color.WHITE, 2.0)
+	var ghost: Variant = _preview.get("object_cursor", null)
+	if ghost is Vector2:
+		draw_arc(ghost, 8.0 / _camera.zoom.x, 0.0, TAU, 16, Color(1.0, 1.0, 1.0, 0.5), 1.0)
 
 
 func _visible_world_rect() -> Rect2:

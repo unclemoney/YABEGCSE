@@ -37,8 +37,32 @@ func _begin() -> void:
 	_test_undo()
 	_test_delete_via_input()
 	_test_save_load_portal()
+	_test_object_via_input()
 	_test_clear_level()
 	_finish()
+
+
+## _test_object_via_input()
+##
+## M4: the O key swaps to the ObjectTool; clicks place the brush, drags
+## move, R rotates, Delete removes; Ctrl+Z restores. Drives the same
+## view -> controller -> ToolSystem path as real input.
+func _test_object_via_input() -> void:
+	var tool_system := _controller.get_node("ToolSystem") as ToolSystem
+	tool_system.set_brush_type("billboard")
+	tool_system.set_brush_art("SOBJ_LIB/BARSTOOL.png")
+	_key(KEY_O)
+	_click(Vector2(300, 300))
+	_check(_controller.level_data.objects.size() == 1, "O + click places an object")
+	_move(Vector2(300, 300))
+	_key(KEY_R)
+	_check(float(_controller.level_data.objects[0]["angle"]) == 15.0, "R rotates hovered object")
+	_key(KEY_DELETE)
+	_check(_controller.level_data.objects.is_empty(), "Delete removes hovered object")
+	_ctrl_z()
+	_check(_controller.level_data.objects.size() == 1, "undo restores the object")
+	_key(KEY_O)  # back to the draw tool
+	_ctrl_z()
 
 
 func _test_draw_via_input() -> void:

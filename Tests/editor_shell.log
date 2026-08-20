@@ -13,6 +13,10 @@ PASS: new level resets state
 PASS: saved level reloads with both rooms
 PASS: portal survives save/load
 PASS: reloaded level validates clean
+PASS: O + click places an object
+PASS: R rotates hovered object
+PASS: Delete removes hovered object
+PASS: undo restores the object
 PASS: clear level wipes geometry
 PASS: clear level wipes points
 ALL TESTS PASSED

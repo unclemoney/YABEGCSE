@@ -95,6 +95,60 @@ static func scan() -> Array[String]:
 	return _scan_cache.duplicate()
 
 
+## resolve(tex_name) -> Texture2D
+##
+## Full library-relative name (with extension) to texture; placeholder on
+## a miss (recorded for the debug panel).
+static func resolve(tex_name: String) -> Texture2D:
+	if tex_name.is_empty():
+		return placeholder()
+	if exists(tex_name):
+		var tex: Texture2D = ResourceLoader.load(LIBRARY_ROOT + tex_name)
+		if tex != null:
+			return tex
+	_mark_missing(tex_name)
+	return placeholder()
+
+
+## resolve_base(base_name) -> Texture2D
+##
+## M4 object art: base names carry no extension (frame/view suffixes are
+## resolved by the caller). Falls back to the placeholder on a miss.
+static func resolve_base(base_name: String) -> Texture2D:
+	if base_name.is_empty():
+		return placeholder()
+	return resolve(base_name + ".png")
+
+
+## resolve_object_frames(obj) -> Array[String]
+##
+## Frame names (with extension) for an object dict:
+## - fluid: base + trailing digits, 1..MAX while they exist;
+## - sprite_8way: the params.views values (explicit map wins);
+## - others: base.png, falling back to base1.png.
+static func resolve_object_frames(obj: Dictionary) -> Array[String]:
+	var frames: Array[String] = []
+	var art := str(obj.get("art", ""))
+	if art.is_empty():
+		return frames
+	var type := str(obj.get("type", ""))
+	if type == "fluid":
+		for i in range(1, 17):
+			var candidate := "%s%d.png" % [art, i]
+			if not exists(candidate):
+				break
+			frames.append(candidate)
+	elif type == "sprite_8way":
+		for key in obj.get("params", {}).get("views", {}):
+			frames.append(str(obj["params"]["views"][key]) + ".png")
+	else:
+		if exists(art + ".png"):
+			frames.append(art + ".png")
+		elif exists(art + "1.png"):
+			frames.append(art + "1.png")
+	return frames
+
+
 static func placeholder() -> ImageTexture:
 	if _placeholder != null:
 		return _placeholder

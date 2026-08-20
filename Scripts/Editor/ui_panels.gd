@@ -15,6 +15,9 @@ signal fixture_load_requested(path: String)
 signal texture_picked(name: String)
 signal texture_pick_requested
 signal texture_picker_closed
+signal brush_type_selected(type: String)
+signal brush_art_requested
+signal debug_place_objects
 
 var _mode_label: Label
 var _status_label: Label
@@ -59,13 +62,13 @@ func toggle_debug_panel() -> void:
 	_debug_panel.toggle()
 
 
-## set_debug_flags(flagged_sectors, flagged_walls)
+## set_debug_flags(flagged_sectors, flagged_walls, flagged_objects)
 ##
 ## Pass-through to the debug panel; called down by EditorController after
 ## every validation pass.
-func set_debug_flags(flagged_sectors: Dictionary, flagged_walls: Dictionary) -> void:
+func set_debug_flags(flagged_sectors: Dictionary, flagged_walls: Dictionary, flagged_objects: Dictionary = {}) -> void:
 	if _debug_panel != null:
-		_debug_panel.set_flags(flagged_sectors, flagged_walls)
+		_debug_panel.set_flags(flagged_sectors, flagged_walls, flagged_objects)
 
 
 ## set_missing_textures(names)
@@ -116,6 +119,18 @@ func _build_ui() -> void:
 	edit_popup.id_pressed.connect(_on_edit_menu_id_pressed)
 	top_bar.add_child(edit_menu)
 
+	# M4 object brush: type picker + art picker (opens the TexturePicker
+	# in brush mode via brush_art_requested).
+	var object_menu := MenuButton.new()
+	object_menu.text = "Object"
+	var object_popup := object_menu.get_popup()
+	for i in range(ObjectOps.TYPES.size()):
+		object_popup.add_item(ObjectOps.TYPES[i], i)
+	object_popup.add_separator()
+	object_popup.add_item("Art...", 100)
+	object_popup.id_pressed.connect(_on_object_menu_id_pressed)
+	top_bar.add_child(object_menu)
+
 	_mode_label = Label.new()
 	_mode_label.text = "  Mode: 2D"
 	top_bar.add_child(_mode_label)
@@ -161,6 +176,9 @@ func _build_ui() -> void:
 	_debug_panel.texture_pick_requested.connect(
 		func() -> void: texture_pick_requested.emit()
 	)
+	_debug_panel.debug_place_objects.connect(
+		func() -> void: debug_place_objects.emit()
+	)
 
 	_texture_picker = TexturePicker.new()
 	_texture_picker.visible = false
@@ -196,3 +214,10 @@ func _on_edit_menu_id_pressed(id: int) -> void:
 	match id:
 		0:
 			_clear_dialog.popup_centered()
+
+
+func _on_object_menu_id_pressed(id: int) -> void:
+	if id == 100:
+		brush_art_requested.emit()
+	elif id >= 0 and id < ObjectOps.TYPES.size():
+		brush_type_selected.emit(ObjectOps.TYPES[id])

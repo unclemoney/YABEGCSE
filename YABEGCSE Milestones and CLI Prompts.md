@@ -134,6 +134,18 @@ Keep tolerate + flag: unresolved art renders as a placeholder plus a
 debug-panel entry, never a crash. Plan mode: produce the plan only.
 ```
 
+### Session 5 — M5: GCS converter (importer v1)
+```
+Read the three YABEGCSE documents. Implement M5 per its acceptance
+criteria: load a DOS 1.3 univ??.txt + objdef??.txt; the level appears as
+object-walls in the void, walkable in play-test. Import is
+destructive-confirmed and produces a debug list of skipped or
+unreconstructable elements. Round-trip: the imported level saves as valid
+v0 JSON (geometry section nearly empty, imported content as wall_object /
+billboard / sprite_8way entries, plus the import report). Plan mode:
+produce the plan only.
+```
+
 ## 3. Standing instructions for every CLI session
 
 - Godot 4.4.1, GDScript only. No plugins, no native code.

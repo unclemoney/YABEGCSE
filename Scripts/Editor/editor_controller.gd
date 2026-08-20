@@ -26,6 +26,7 @@ var mode: Mode = Mode.MODE_2D
 
 var _serializer := LevelSerializer.new()
 var _current_path := ""
+var _picker_brush_mode := false
 
 @onready var _canvas_2d: Canvas2DView = get_node_or_null(canvas_2d_path)
 @onready var _viewport_3d: Viewport3DView = get_node_or_null(viewport_3d_path)
@@ -59,6 +60,9 @@ func _ready() -> void:
 		_ui_panels.texture_picked.connect(_on_texture_picked)
 		_ui_panels.texture_pick_requested.connect(_on_texture_pick_requested.bind({}))
 		_ui_panels.texture_picker_closed.connect(_on_texture_picker_closed)
+		_ui_panels.brush_type_selected.connect(_on_brush_type_selected)
+		_ui_panels.brush_art_requested.connect(_on_brush_art_requested)
+		_ui_panels.debug_place_objects.connect(_on_debug_place_objects)
 	_apply_mode()
 
 
@@ -180,12 +184,44 @@ func _on_3d_edit_motion(relative: Vector2, aim: Dictionary) -> void:
 
 func _on_texture_pick_requested(_aim: Dictionary) -> void:
 	if _ui_panels != null:
+		_picker_brush_mode = false
 		_ui_panels.open_texture_picker()
 
 
 func _on_texture_picked(tex_name: String) -> void:
-	if _tool_system != null:
+	if _tool_system == null:
+		return
+	if _picker_brush_mode:
+		_tool_system.set_brush_art(tex_name)
+		_update_brush_status()
+	else:
 		_tool_system.commit_texture(tex_name)
+
+
+func _on_brush_type_selected(type: String) -> void:
+	if _tool_system != null:
+		_tool_system.set_brush_type(type)
+		_tool_system.set_object_mode(true)
+		_update_brush_status()
+
+
+func _on_brush_art_requested() -> void:
+	if _ui_panels != null:
+		_picker_brush_mode = true
+		_ui_panels.open_texture_picker()
+
+
+func _on_debug_place_objects() -> void:
+	if _tool_system != null:
+		_tool_system.debug_place_test_set()
+		if _ui_panels != null:
+			_ui_panels.set_status("Test object set placed.")
+
+
+func _update_brush_status() -> void:
+	if _ui_panels != null and _tool_system != null:
+		var brush := _tool_system.get_brush()
+		_ui_panels.set_status("Brush: %s  art=%s" % [brush["type"], brush["art"]])
 
 
 ## _on_texture_picker_closed()
@@ -201,6 +237,7 @@ func _push_undo_snapshot() -> void:
 		"points": level_data.points.duplicate(true),
 		"walls": level_data.walls.duplicate(true),
 		"sectors": level_data.sectors.duplicate(true),
+		"objects": level_data.objects.duplicate(true),
 	})
 
 
@@ -213,6 +250,7 @@ func _undo() -> void:
 	level_data.points = snapshot["points"].duplicate(true)
 	level_data.walls = snapshot["walls"].duplicate(true)
 	level_data.sectors = snapshot["sectors"].duplicate(true)
+	level_data.objects = snapshot.get("objects", []).duplicate(true)
 	GeometryOps.validate(level_data)
 	_on_level_data_changed(LevelData.ChangeType.GEOMETRY)
 	if _ui_panels != null:
@@ -251,7 +289,9 @@ func _on_level_data_changed(_change_type: LevelData.ChangeType) -> void:
 		if _ui_panels != null and stats.has("missing_textures"):
 			_ui_panels.set_missing_textures(stats["missing_textures"])
 	if _ui_panels != null and level_data != null:
-		_ui_panels.set_debug_flags(level_data.flagged_sectors, level_data.flagged_walls)
+		_ui_panels.set_debug_flags(
+			level_data.flagged_sectors, level_data.flagged_walls, level_data.flagged_objects
+		)
 
 
 func _apply_mode() -> void:

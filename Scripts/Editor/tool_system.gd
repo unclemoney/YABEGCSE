@@ -16,18 +16,22 @@ signal texture_pick_requested(aim: Dictionary)
 var _level_data: LevelData
 var _draw_tool: DrawSectorTool
 var _edit_3d_tool: Edit3DTool
+var _object_tool: ObjectTool
 var _active_tool: RefCounted
 var _pending_texture_aim := {}
 var _last_aim := {}
+## M4 brush: what the ObjectTool places on click.
+var _brush := {"type": "billboard", "art": ""}
 
 
 ## _ready()
 ##
-## Side-effects: creates the tool set (2D draw + M3 3D edit) and activates
-## the draw tool.
+## Side-effects: creates the tool set (2D draw + 2D objects + 3D edit) and
+## activates the draw tool.
 func _ready() -> void:
 	_draw_tool = DrawSectorTool.new(self)
 	_edit_3d_tool = Edit3DTool.new(self)
+	_object_tool = ObjectTool.new(self)
 	_active_tool = _draw_tool
 
 
@@ -59,6 +63,37 @@ func set_mode_3d(is_3d: bool) -> void:
 	_active_tool.activate()
 
 
+## set_object_mode(on)
+##
+## 2D tool switching (O key): draw sectors <-> place objects. 3D mode
+## always uses the Edit3DTool; set_mode_3d wins over this.
+func set_object_mode(on: bool) -> void:
+	if _active_tool == _edit_3d_tool:
+		return
+	_active_tool.deactivate()
+	if on:
+		_active_tool = _object_tool
+	else:
+		_active_tool = _draw_tool
+	_active_tool.activate()
+
+
+func get_brush() -> Dictionary:
+	return _brush
+
+
+func set_brush_type(type: String) -> void:
+	_brush["type"] = type
+
+
+## set_brush_art(tex_name)
+##
+## Object art is stored as a library-relative BASE name (no extension) so
+## frame/view expansion rules apply.
+func set_brush_art(tex_name: String) -> void:
+	_brush["art"] = tex_name.trim_suffix(".png")
+
+
 func get_preview() -> Dictionary:
 	if _active_tool == null:
 		return {}
@@ -69,9 +104,13 @@ func get_preview() -> Dictionary:
 ##
 ## 2D canvas route. Returns true when consumed.
 func handle_input(event: InputEvent, world_pos: Vector2, snapped_pos: Vector2) -> bool:
-	if _active_tool != _draw_tool:
+	if _active_tool != _draw_tool and _active_tool != _object_tool:
 		return false
-	return _draw_tool.handle_input(event, world_pos, snapped_pos)
+	if event is InputEventKey and event.pressed and not event.echo:
+		if (event as InputEventKey).keycode == KEY_O:
+			set_object_mode(_active_tool != _object_tool)
+			return true
+	return _active_tool.handle_input(event, world_pos, snapped_pos)
 
 
 ## handle_3d_input(event, aim) -> bool
@@ -197,7 +236,14 @@ func commit_texture(tex_name: String) -> void:
 		return
 	var kind: StringName = aim.get("kind", &"none")
 	mutation_committed.emit()
-	if kind == &"wall":
+	if kind == &"object":
+		var object_id := int(aim.get("object_id", -1))
+		if object_id >= 0 and object_id < _level_data.objects.size():
+			var o: Dictionary = _level_data.objects[object_id]
+			o["art"] = tex_name.trim_suffix(".png")
+			if o.get("type") == "sprite_8way":
+				o["params"]["views"] = ObjectOps.probe_views(o["art"])
+	elif kind == &"wall":
 		var wall_id := int(aim.get("wall_id", -1))
 		if wall_id >= 0 and wall_id < _level_data.walls.size():
 			_level_data.walls[wall_id]["texture"] = tex_name
@@ -244,3 +290,120 @@ func update_corner_drag(sector_id: int, slope_key: StringName, point_id: int, he
 
 func end_corner_drag() -> void:
 	pass
+
+
+## --- M4 object commits -------------------------------------------------
+## Same discipline as geometry: mutation_committed (undo snapshot) ->
+## mutate -> validate -> level_data_changed. Drags take the snapshot once
+## at begin and preview through update.
+
+## commit_object_place(pos)
+##
+## Places the current brush at pos. 8-way sprites get their rotation views
+## probed from the library at placement time.
+func commit_object_place(pos: Vector2) -> void:
+	if _level_data == null:
+		return
+	var obj := ObjectOps.defaults(str(_brush["type"]))
+	if obj.is_empty():
+		return
+	obj["pos"] = [pos.x, pos.y]
+	obj["art"] = str(_brush["art"])
+	if obj["type"] == "sprite_8way":
+		obj["params"]["views"] = ObjectOps.probe_views(obj["art"])
+	mutation_committed.emit()
+	_level_data.objects.append(obj)
+	GeometryOps.validate(_level_data)
+	level_data_changed.emit(LevelData.ChangeType.OBJECTS)
+
+
+func commit_object_move(idx: int, pos: Vector2, z: float) -> void:
+	if _level_data == null or idx < 0 or idx >= _level_data.objects.size():
+		return
+	mutation_committed.emit()
+	_level_data.objects[idx]["pos"] = [pos.x, pos.y]
+	_level_data.objects[idx]["z"] = z
+	GeometryOps.validate(_level_data)
+	level_data_changed.emit(LevelData.ChangeType.OBJECTS)
+
+
+func commit_object_rotate(idx: int, delta_deg: float) -> void:
+	if _level_data == null or idx < 0 or idx >= _level_data.objects.size():
+		return
+	mutation_committed.emit()
+	var o: Dictionary = _level_data.objects[idx]
+	o["angle"] = fmod(float(o.get("angle", 0.0)) + delta_deg, 360.0)
+	GeometryOps.validate(_level_data)
+	level_data_changed.emit(LevelData.ChangeType.OBJECTS)
+
+
+func commit_object_delete(idx: int) -> void:
+	if _level_data == null or idx < 0 or idx >= _level_data.objects.size():
+		return
+	mutation_committed.emit()
+	_level_data.objects.remove_at(idx)
+	GeometryOps.validate(_level_data)
+	level_data_changed.emit(LevelData.ChangeType.OBJECTS)
+
+
+## commit_object_z(idx, delta)
+##
+## Ctrl+wheel z nudge in 3D. One tick = one undo step.
+func commit_object_z(idx: int, delta: float) -> void:
+	if _level_data == null or idx < 0 or idx >= _level_data.objects.size():
+		return
+	mutation_committed.emit()
+	var o: Dictionary = _level_data.objects[idx]
+	o["z"] = float(o.get("z", 0.0)) + delta
+	GeometryOps.validate(_level_data)
+	level_data_changed.emit(LevelData.ChangeType.OBJECTS)
+
+
+func begin_object_drag() -> void:
+	mutation_committed.emit()
+
+
+func update_object_drag(idx: int, pos: Vector2) -> void:
+	if _level_data == null or idx < 0 or idx >= _level_data.objects.size():
+		return
+	_level_data.objects[idx]["pos"] = [pos.x, pos.y]
+	GeometryOps.validate(_level_data)
+	level_data_changed.emit(LevelData.ChangeType.OBJECTS)
+
+
+func update_object_drag_z(idx: int, z: float) -> void:
+	if _level_data == null or idx < 0 or idx >= _level_data.objects.size():
+		return
+	_level_data.objects[idx]["z"] = z
+	GeometryOps.validate(_level_data)
+	level_data_changed.emit(LevelData.ChangeType.OBJECTS)
+
+
+func end_object_drag() -> void:
+	pass
+
+
+## debug_place_test_set()
+##
+## Debug-panel command: one object of each type near the origin, using
+## real ArtLibrary art (BUG_ENEM 8-view set, ANIM_LIB fluid).
+func debug_place_test_set() -> void:
+	if _level_data == null:
+		return
+	mutation_committed.emit()
+	var specs := [
+		{"type": "billboard", "pos": [0.0, -192.0], "art": "SOBJ_LIB/BARSTOOL"},
+		{"type": "wall_object", "pos": [128.0, -192.0], "art": "ANIM_LIB/BARREL"},
+		{"type": "sprite_8way", "pos": [256.0, -192.0], "art": "BUG_ENEM/BUG1BS"},
+		{"type": "fluid", "pos": [384.0, -192.0], "art": "ANIM_LIB/BURN"},
+		{"type": "platform", "pos": [512.0, -192.0], "art": "BASICLIB/BOX1"},
+	]
+	for spec in specs:
+		var obj := ObjectOps.defaults(spec["type"])
+		obj["pos"] = spec["pos"]
+		obj["art"] = spec["art"]
+		if obj["type"] == "sprite_8way":
+			obj["params"]["views"] = ObjectOps.probe_views(obj["art"])
+		_level_data.objects.append(obj)
+	GeometryOps.validate(_level_data)
+	level_data_changed.emit(LevelData.ChangeType.OBJECTS)

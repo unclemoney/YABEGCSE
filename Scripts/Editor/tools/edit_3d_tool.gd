@@ -23,6 +23,7 @@ const DRAG_SCALE := 2.0  # world units of height per pixel of mouse-Y
 
 var _system: ToolSystem
 var _drag := {}  # empty = not dragging; else {sector_id, slope_key, point_id, height}
+var _obj_drag := {}  # empty = not dragging; else {object_id}
 
 
 func _init(system: ToolSystem) -> void:
@@ -35,6 +36,7 @@ func activate() -> void:
 
 func deactivate() -> void:
 	_drag = {}
+	_obj_drag = {}
 
 
 func get_preview() -> Dictionary:
@@ -43,15 +45,16 @@ func get_preview() -> Dictionary:
 
 ## is_dragging() -> bool
 ##
-## While a corner drag is active the view suppresses mouse-look.
+## While a corner or object drag is active the view suppresses mouse-look.
 func is_dragging() -> bool:
-	return not _drag.is_empty()
+	return not _drag.is_empty() or not _obj_drag.is_empty()
 
 
 ## handle_input(event, aim) -> bool
 ##
 ## Aim is the AimInfo dict from GeometryOps.aim_from_ray for the current
-## crosshair ray. Returns true when the event was consumed.
+## crosshair ray (object hits merged in by the view). Returns true when
+## the event was consumed.
 func handle_input(event: InputEvent, aim: Dictionary) -> bool:
 	var kind: StringName = aim.get("kind", &"none")
 	if event.is_action_pressed("pick_texture"):
@@ -61,28 +64,45 @@ func handle_input(event: InputEvent, aim: Dictionary) -> bool:
 	if event.is_action_pressed("reset_slope"):
 		if kind == &"floor" or kind == &"ceiling":
 			_system.commit_reset_slope(int(aim["sector_id"]), _slope_key(kind))
+		elif kind == &"object":
+			_system.commit_object_delete(int(aim["object_id"]))
 		return true
+	if event is InputEventKey and event.pressed and not event.echo:
+		if (event as InputEventKey).keycode == KEY_DELETE and kind == &"object":
+			_system.commit_object_delete(int(aim["object_id"]))
+			return true
 	if event.is_action_pressed("grab_corner"):
 		if kind == &"floor" or kind == &"ceiling":
 			_begin_drag(aim)
+		elif kind == &"object":
+			_system.begin_object_drag()
+			_obj_drag = {"object_id": int(aim["object_id"])}
 		return true
 	if event.is_action_released("grab_corner"):
 		_end_drag()
+		if not _obj_drag.is_empty():
+			_obj_drag = {}
+			_system.end_object_drag()
 		return true
 	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed:
 		var button := (event as InputEventMouseButton).button_index
 		if button == MOUSE_BUTTON_WHEEL_UP or button == MOUSE_BUTTON_WHEEL_DOWN:
-			_on_wheel(button == MOUSE_BUTTON_WHEEL_UP, (event as InputEventMouseButton).shift_pressed, aim)
+			_on_wheel(button == MOUSE_BUTTON_WHEEL_UP, event as InputEventMouseButton, aim)
 			return true
 	return false
 
 
 ## handle_motion(relative, aim) -> bool
 ##
-## Mouse motion during a corner drag adjusts the corner's height live
-## (preview commits without undo pushes; the undo snapshot was taken at
+## Mouse motion during a drag adjusts the corner height or object position
+## live (preview commits without undo pushes; the snapshot was taken at
 ## drag start).
-func handle_motion(relative: Vector2, _aim: Dictionary) -> bool:
+func handle_motion(relative: Vector2, aim: Dictionary) -> bool:
+	if not _obj_drag.is_empty():
+		var ground: Variant = aim.get("ground_point", null)
+		if ground is Vector3:
+			_system.update_object_drag(int(_obj_drag["object_id"]), Vector2(ground.x, ground.z))
+		return true
 	if _drag.is_empty():
 		return false
 	_drag["height"] = float(_drag["height"]) - relative.y * DRAG_SCALE
@@ -100,6 +120,15 @@ func describe_aim(aim: Dictionary) -> String:
 	var data: LevelData = _system.get_level_data()
 	if data == null or kind == &"none":
 		return ""
+	if kind == &"object":
+		var object_id := int(aim.get("object_id", -1))
+		if object_id < 0 or object_id >= data.objects.size():
+			return ""
+		var o: Dictionary = data.objects[object_id]
+		return "object %d %s  art=%s  a=%d z=%d" % [
+			object_id, o.get("type", "?"), o.get("art", ""),
+			int(o.get("angle", 0.0)), int(o.get("z", 0.0)),
+		]
 	var sector_id := int(aim.get("sector_id", -1))
 	if kind == &"wall":
 		var wall_id := int(aim.get("wall_id", -1))
@@ -124,18 +153,25 @@ func _slope_key(kind: StringName) -> StringName:
 	return &"floor_slope" if kind == &"floor" else &"ceiling_slope"
 
 
-func _on_wheel(up: bool, shift: bool, aim: Dictionary) -> void:
+func _on_wheel(up: bool, event: InputEventMouseButton, aim: Dictionary) -> void:
 	var kind: StringName = aim.get("kind", &"none")
 	var step := HEIGHT_STEP if up else -HEIGHT_STEP
+	if kind == &"object":
+		# Wheel rotates the aimed object; Ctrl+wheel nudges its z.
+		if event.ctrl_pressed:
+			_system.commit_object_z(int(aim["object_id"]), step)
+		else:
+			_system.commit_object_rotate(int(aim["object_id"]), 15.0 if up else -15.0)
+		return
 	if kind == &"floor" or kind == &"ceiling":
 		# Shift swaps to the opposite face of the same sector.
 		var target := kind
-		if shift:
+		if event.shift_pressed:
 			target = &"ceiling" if kind == &"floor" else &"floor"
 		_system.commit_height(int(aim["sector_id"]), target, step)
 	elif kind == &"wall":
 		var offset_step := OFFSET_STEP if up else -OFFSET_STEP
-		if shift:
+		if event.shift_pressed:
 			_system.commit_wall_offset(int(aim["wall_id"]), 0.0, offset_step)
 		else:
 			_system.commit_wall_offset(int(aim["wall_id"]), offset_step, 0.0)

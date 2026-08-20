@@ -327,6 +327,9 @@ static func validate(data: LevelData) -> void:
 		var ceil_y := float(sector.get("ceiling_height", 256.0))
 		if floor_y >= ceil_y:
 			_flag_sector(data, si, "floor at or above ceiling")
+	# M4: object schema-shape checks live in ObjectOps but run from the
+	# same single validation entry point.
+	ObjectOps.validate(data)
 
 
 ## loop_to_polygon(data, wall_ids) -> PackedVector2Array
