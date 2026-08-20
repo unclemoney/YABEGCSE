@@ -12,6 +12,9 @@ signal open_path_selected(path: String)
 signal save_path_selected(path: String)
 signal clear_confirmed
 signal fixture_load_requested(path: String)
+signal texture_picked(name: String)
+signal texture_pick_requested
+signal texture_picker_closed
 
 var _mode_label: Label
 var _status_label: Label
@@ -19,6 +22,8 @@ var _open_dialog: FileDialog
 var _save_dialog: FileDialog
 var _clear_dialog: ConfirmationDialog
 var _debug_panel: DebugPanel
+var _texture_picker: TexturePicker
+var _crosshair: ColorRect
 
 var _message := "YABEGCSE"
 var _cursor_text := ""
@@ -36,6 +41,8 @@ func set_mode(mode: EditorController.Mode) -> void:
 		_mode_label.text = "  Mode: 2D"
 	else:
 		_mode_label.text = "  Mode: 3D"
+	if _crosshair != null:
+		_crosshair.visible = mode == EditorController.Mode.MODE_3D
 
 
 func set_status(text: String) -> void:
@@ -59,6 +66,24 @@ func toggle_debug_panel() -> void:
 func set_debug_flags(flagged_sectors: Dictionary, flagged_walls: Dictionary) -> void:
 	if _debug_panel != null:
 		_debug_panel.set_flags(flagged_sectors, flagged_walls)
+
+
+## set_missing_textures(names)
+##
+## Pass-through to the debug panel: unresolved art references from the
+## last 3D mesh rebuild.
+func set_missing_textures(names: Array) -> void:
+	if _debug_panel != null:
+		_debug_panel.set_missing_textures(names)
+
+
+## open_texture_picker()
+##
+## Releases the mouse so the picker is clickable; texture_picker_closed
+## tells the controller when to re-capture (3D mode).
+func open_texture_picker() -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_texture_picker.open()
 
 
 func _refresh_status() -> void:
@@ -133,6 +158,28 @@ func _build_ui() -> void:
 	_debug_panel.fixture_load_requested.connect(
 		func(path: String) -> void: fixture_load_requested.emit(path)
 	)
+	_debug_panel.texture_pick_requested.connect(
+		func() -> void: texture_pick_requested.emit()
+	)
+
+	_texture_picker = TexturePicker.new()
+	_texture_picker.visible = false
+	add_child(_texture_picker)
+	_texture_picker.set_anchors_preset(Control.PRESET_FULL_RECT, true)
+	_texture_picker.texture_picked.connect(
+		func(tex_name: String) -> void: texture_picked.emit(tex_name)
+	)
+	_texture_picker.closed.connect(func() -> void: texture_picker_closed.emit())
+
+	# Crosshair: the 3D edit cursor (mouse is captured in 3D mode).
+	_crosshair = ColorRect.new()
+	_crosshair.color = Color(1.0, 1.0, 1.0, 0.8)
+	_crosshair.custom_minimum_size = Vector2(5, 5)
+	_crosshair.size = Vector2(5, 5)
+	_crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_crosshair.visible = false
+	add_child(_crosshair)
+	_crosshair.set_anchors_preset(Control.PRESET_CENTER, true)
 
 
 func _on_file_menu_id_pressed(id: int) -> void:

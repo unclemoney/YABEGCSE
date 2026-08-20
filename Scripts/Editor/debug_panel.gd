@@ -8,9 +8,12 @@ extends Control
 ## new features ship with debug-panel access.
 
 signal fixture_load_requested(path: String)
+signal texture_pick_requested
 
 var _panel: PanelContainer
 var _list: Label
+var _missing_textures: Array = []
+var _flags_text := ""
 
 
 ## _ready()
@@ -34,17 +37,34 @@ func toggle() -> void:
 ## One line per flagged sector/wall with its reason. Annotations are
 ## computed by GeometryOps.validate() — this panel only displays them.
 func set_flags(flagged_sectors: Dictionary, flagged_walls: Dictionary) -> void:
-	if _list == null:
-		return
 	var lines: Array[String] = []
 	for id in flagged_sectors:
 		lines.append("Sector %d: %s" % [id, flagged_sectors[id]])
 	for id in flagged_walls:
 		lines.append("Wall %d: %s" % [id, flagged_walls[id]])
 	if lines.is_empty():
-		_list.text = "Debug — no flagged sectors or walls."
+		_flags_text = "No flagged sectors or walls."
 	else:
-		_list.text = "\n".join(lines)
+		_flags_text = "\n".join(lines)
+	_render()
+
+
+## set_missing_textures(names)
+##
+## Unresolved art-library references from the last mesh build (envelope:
+## unresolved references log to the debug panel).
+func set_missing_textures(names: Array) -> void:
+	_missing_textures = names
+	_render()
+
+
+func _render() -> void:
+	if _list == null:
+		return
+	var text := _flags_text
+	if not _missing_textures.is_empty():
+		text += "\nMissing textures: " + ", ".join(_missing_textures)
+	_list.text = "Debug — " + text
 
 
 func _build_ui() -> void:
@@ -95,3 +115,13 @@ func _build_ui() -> void:
 		func() -> void: fixture_load_requested.emit("res://Tests/Fixtures/level_corrupt_v0.json")
 	)
 	buttons.add_child(corrupt)
+	var slopes := Button.new()
+	slopes.text = "Load slope fixture"
+	slopes.pressed.connect(
+		func() -> void: fixture_load_requested.emit("res://Tests/Fixtures/level_slopes_v0.json")
+	)
+	buttons.add_child(slopes)
+	var pick := Button.new()
+	pick.text = "Pick texture..."
+	pick.pressed.connect(func() -> void: texture_pick_requested.emit())
+	buttons.add_child(pick)

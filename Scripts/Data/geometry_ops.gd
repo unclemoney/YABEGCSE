@@ -181,6 +181,8 @@ static func close_loop_from_positions(data: LevelData, verts: Array) -> int:
 		"ceiling_height": 256.0,
 		"floor_texture": "",
 		"ceiling_texture": "",
+		"floor_slope": [],
+		"ceiling_slope": [],
 		"flags": 0,
 	})
 
@@ -308,6 +310,23 @@ static func validate(data: LevelData) -> void:
 			if not one_way:
 				_flag_sector(data, si, "2D overlap (no room-over-room)")
 				_flag_sector(data, sj, "2D overlap (no room-over-room)")
+	# Slope planes (M3): tolerate + flag. Anything but exactly 3 valid,
+	# non-collinear corner heights degrades to flat rendering.
+	for si in range(data.sectors.size()):
+		var sector: Dictionary = data.sectors[si]
+		for key in [&"floor_slope", &"ceiling_slope"]:
+			var slope: Array = sector.get(key, [])
+			if slope.is_empty():
+				continue
+			var corners := _slope_corners(data, sector, key)
+			if slope.size() != 3 or corners.size() != 3:
+				_flag_sector(data, si, "%s: incomplete slope (%d/3 corners)" % [key, corners.size()])
+			elif not _corners_form_plane(corners):
+				_flag_sector(data, si, "%s: collinear slope corners" % key)
+		var floor_y := float(sector.get("floor_height", 0.0))
+		var ceil_y := float(sector.get("ceiling_height", 256.0))
+		if floor_y >= ceil_y:
+			_flag_sector(data, si, "floor at or above ceiling")
 
 
 ## loop_to_polygon(data, wall_ids) -> PackedVector2Array
@@ -430,6 +449,234 @@ static func polygon_area(poly: PackedVector2Array) -> float:
 		var j := (i + 1) % poly.size()
 		area += poly[i].x * poly[j].y - poly[j].x * poly[i].y
 	return area * 0.5
+
+
+## floor_height_at(data, sector_id, pos) -> float
+## ceiling_height_at(data, sector_id, pos) -> float
+##
+## Height of a sector face at a 2D position. A valid slope plane (exactly 3
+## non-collinear corner heights) is evaluated; anything else falls back to
+## the flat floor_height / ceiling_height. Never errors.
+static func floor_height_at(data: LevelData, sector_id: int, pos: Vector2) -> float:
+	return _face_height_at(data, sector_id, pos, &"floor_slope", &"floor_height", 0.0)
+
+
+static func ceiling_height_at(data: LevelData, sector_id: int, pos: Vector2) -> float:
+	return _face_height_at(data, sector_id, pos, &"ceiling_slope", &"ceiling_height", 256.0)
+
+
+static func _face_height_at(
+	data: LevelData,
+	sector_id: int,
+	pos: Vector2,
+	slope_key: StringName,
+	height_key: StringName,
+	default_height: float
+) -> float:
+	if sector_id < 0 or sector_id >= data.sectors.size():
+		return default_height
+	var sector: Dictionary = data.sectors[sector_id]
+	var base := float(sector.get(height_key, default_height))
+	var corners := _slope_corners(data, sector, slope_key)
+	if corners.size() != 3 or not _corners_form_plane(corners):
+		return base
+	# Plane through 3 corners: n . (p - c0) = 0, solved for y at (x, z).
+	var n: Vector3 = (corners[1] - corners[0]).cross(corners[2] - corners[0])
+	if absf(n.y) < EPS:
+		return base  # vertical plane: not a usable floor/ceiling
+	return corners[0].y - (n.x * (pos.x - corners[0].x) + n.z * (pos.y - corners[0].z)) / n.y
+
+
+## set_slope_corner(sector, slope_key, point_id, height)
+##
+## Adds or replaces one corner-height entry in a slope array. Order of
+## insertion is kept; the plane is defined once 3 distinct valid corners
+## exist. Pure dict surgery — callers own commit/validate.
+static func set_slope_corner(sector: Dictionary, slope_key: StringName, point_id: int, height: float) -> void:
+	var slope: Array = sector.get(slope_key, [])
+	for entry in slope:
+		if int(entry[0]) == point_id:
+			entry[1] = height
+			return
+	slope.append([point_id, height])
+	sector[slope_key] = slope
+
+
+## _slope_corners(data, sector, slope_key) -> Array[Vector3]
+##
+## Resolves slope entries to 3D corners (map x, height, map y). Entries
+## with out-of-range point ids are dropped; validate() flags the sector.
+static func _slope_corners(data: LevelData, sector: Dictionary, slope_key: StringName) -> Array:
+	var corners: Array = []
+	for entry in sector.get(slope_key, []):
+		if not entry is Array or entry.size() != 2:
+			continue
+		var pid := int(entry[0])
+		if pid < 0 or pid >= data.points.size():
+			continue
+		var p := get_point(data, pid)
+		corners.append(Vector3(p.x, float(entry[1]), p.y))
+	return corners
+
+
+## _corners_form_plane(corners) -> bool
+##
+## Three corners are a usable face plane iff their 2D positions are not
+## collinear — any three 3D points define some plane, but a vertical one
+## (collinear 2D projection) cannot be a floor or ceiling.
+static func _corners_form_plane(corners: Array) -> bool:
+	if corners.size() != 3:
+		return false
+	var d1 := Vector2(corners[1].x - corners[0].x, corners[1].z - corners[0].z)
+	var d2 := Vector2(corners[2].x - corners[0].x, corners[2].z - corners[0].z)
+	return absf(d1.cross(d2)) >= EPS
+
+
+## is_sector_buildable(data, sector_id) -> bool
+##
+## Tolerate + flag, but some flags are fatal for meshing: broken loops,
+## crossings, 2D overlap. M3 flags (slope problems, floor >= ceiling) are
+## cosmetic — the sector still builds, degraded to flat heights.
+const STRUCTURAL_FLAG_MARKERS: Array[String] = ["unclosed", "crossing", "overlap"]
+
+static func is_sector_buildable(data: LevelData, sector_id: int) -> bool:
+	if not data.flagged_sectors.has(sector_id):
+		return true
+	var reason: String = data.flagged_sectors[sector_id]
+	for marker in STRUCTURAL_FLAG_MARKERS:
+		if reason.contains(marker):
+			return false
+	return true
+
+
+## aim_from_ray(data, origin, dir) -> Dictionary
+##
+## M3 3D-mode picking: casts a ray (camera through crosshair) against all
+## sector floors, ceilings and walls — pure math, no physics, so it runs
+## headless. Returns the nearest hit:
+##   {"kind": &"floor"|&"ceiling"|&"wall", "sector_id": int,
+##    "wall_id": int (-1 unless wall), "point": Vector3, "distance": float}
+## or {"kind": &"none"} when nothing is hit within MAX_AIM_DIST.
+const MAX_AIM_DIST := 4096.0
+
+static func aim_from_ray(data: LevelData, origin: Vector3, dir: Vector3) -> Dictionary:
+	var best := {"kind": &"none"}
+	var best_t := MAX_AIM_DIST
+	if dir.length_squared() < EPS * EPS:
+		return best
+	for si in range(data.sectors.size()):
+		var poly := loop_to_polygon(data, data.sectors[si]["walls"])
+		if poly.size() < 3:
+			continue
+		for is_floor in [true, false]:
+			var hit := _ray_face_hit(data, si, origin, dir, is_floor)
+			if hit.x < 0.0 or hit.x >= best_t:
+				continue
+			var p := origin + dir * hit.x
+			if not point_in_sector(data, si, Vector2(p.x, p.z)):
+				continue
+			best_t = hit.x
+			best = {
+				"kind": &"floor" if is_floor else &"ceiling",
+				"sector_id": si,
+				"wall_id": -1,
+				"point": p,
+				"distance": hit.x,
+			}
+	for wi in range(data.walls.size()):
+		var w: Dictionary = data.walls[wi]
+		if not _valid_wall(data, w):
+			continue
+		var a2 := get_point(data, w["a"])
+		var b2 := get_point(data, w["b"])
+		var a3 := Vector3(a2.x, 0.0, a2.y)
+		var n := Vector3(-(b2.y - a2.y), 0.0, b2.x - a2.x)
+		if n.length_squared() < EPS * EPS:
+			continue
+		var hit_variant: Variant = Plane(n.normalized(), a3).intersects_ray(origin, dir)
+		if hit_variant == null:
+			continue
+		var p: Vector3 = hit_variant
+		var t := origin.distance_to(p)
+		if t >= best_t or t < EPS:
+			continue
+		# Within the wall segment and its vertical span?
+		var u := _param_on_segment(Vector2(p.x, p.z), a2, b2)
+		if u < -EPS_T or u > 1.0 + EPS_T:
+			continue
+		var span := _wall_vertical_span(data, w)
+		if p.y < span.x - EPS or p.y > span.y + EPS:
+			continue
+		best_t = t
+		best = {
+			"kind": &"wall",
+			"sector_id": w["front"],
+			"wall_id": wi,
+			"point": p,
+			"distance": t,
+		}
+	return best
+
+
+## nearest_corner(data, sector_id, pos, tolerance) -> int
+##
+## Point id of the nearest outer-loop corner of a sector, or -1.
+static func nearest_corner(data: LevelData, sector_id: int, pos: Vector2, tolerance: float) -> int:
+	if sector_id < 0 or sector_id >= data.sectors.size():
+		return -1
+	var best := -1
+	var best_dist := tolerance
+	for wid in data.sectors[sector_id]["walls"]:
+		var w: Dictionary = data.walls[wid]
+		if not _valid_wall(data, w):
+			continue
+		for pid in [w["a"], w["b"]]:
+			var dist := get_point(data, pid).distance_to(pos)
+			if dist < best_dist:
+				best_dist = dist
+				best = pid
+	return best
+
+
+## _ray_face_hit(...) -> Vector2 (t, 0) or (-1, 0)
+##
+## Ray vs a sector face: its slope plane when valid, else the flat height.
+static func _ray_face_hit(data: LevelData, sector_id: int, origin: Vector3, dir: Vector3, is_floor: bool) -> Vector2:
+	var sector: Dictionary = data.sectors[sector_id]
+	var slope_key := &"floor_slope" if is_floor else &"ceiling_slope"
+	var height_key := &"floor_height" if is_floor else &"ceiling_height"
+	var default_h := 0.0 if is_floor else 256.0
+	var corners := _slope_corners(data, sector, slope_key)
+	var plane: Plane
+	if corners.size() == 3 and _corners_form_plane(corners):
+		plane = Plane(corners[0], corners[1], corners[2])
+	else:
+		var h := float(sector.get(height_key, default_h))
+		plane = Plane(Vector3.UP, h)
+	var hit: Variant = plane.intersects_ray(origin, dir)
+	if hit == null:
+		return Vector2(-1.0, 0.0)
+	var t := origin.distance_to(hit)
+	if t < EPS:
+		return Vector2(-1.0, 0.0)
+	return Vector2(t, 0.0)
+
+
+## _wall_vertical_span(data, w) -> Vector2
+##
+## Lowest floor to highest ceiling across both sides of a wall.
+static func _wall_vertical_span(data: LevelData, w: Dictionary) -> Vector2:
+	var lo := INF
+	var hi := -INF
+	for si in [w["front"], w["back"]]:
+		if si < 0 or si >= data.sectors.size():
+			continue
+		var s: Dictionary = data.sectors[si]
+		lo = minf(lo, float(s.get("floor_height", 0.0)))
+		hi = maxf(hi, float(s.get("ceiling_height", 256.0)))
+	if lo > hi:
+		return Vector2(0.0, 256.0)
+	return Vector2(lo, hi)
 
 
 static func point_strictly_inside(p: Vector2, poly: PackedVector2Array) -> bool:

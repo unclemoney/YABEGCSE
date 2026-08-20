@@ -103,6 +103,15 @@ static func _normalize_geometry(data: LevelData) -> void:
 		s["floor_height"] = float(s.get("floor_height", 0.0))
 		s["ceiling_height"] = float(s.get("ceiling_height", 256.0))
 		s["flags"] = int(s.get("flags", 0))
+		# Slope planes (M3): [[point_id, height], ...] x3. Malformed entries
+		# are dropped silently; validate() flags what remains.
+		for key in [&"floor_slope", &"ceiling_slope"]:
+			var slope: Array = s.get(key, [])
+			var clean: Array = []
+			for entry in slope:
+				if entry is Array and entry.size() == 2:
+					clean.append([int(entry[0]), float(entry[1])])
+			s[key] = clean
 
 
 ## save_to_json(data) -> String

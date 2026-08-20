@@ -1,0 +1,47 @@
+{
+	"header": {
+		"format": "yabegcse-level",
+		"version": 0,
+		"generator": "fixture"
+	},
+	"meta": {
+		"name": "Slopes",
+		"author": "test",
+		"description": "M3 fixture: valid floor slope, incomplete slope, collinear ceiling slope, missing texture, wall offsets"
+	},
+	"environment": {},
+	"geometry": {
+		"points": [
+			[0, 0], [256, 0], [256, 256], [0, 256],
+			[512, 0], [512, 256],
+			[0, -256], [256, -256], [128, -256]
+		],
+		"walls": [
+			{"a": 0, "b": 1, "front": 0, "back": 2, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 1, "b": 2, "front": 0, "back": 1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 2, "b": 3, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 3, "b": 0, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 1, "b": 4, "front": 1, "back": -1, "texture": "NOPE/MISSING.png", "offset_u": 16, "offset_v": 8},
+			{"a": 4, "b": 5, "front": 1, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 5, "b": 2, "front": 1, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 6, "b": 8, "front": 2, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 8, "b": 7, "front": 2, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 7, "b": 1, "front": 2, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 0, "b": 6, "front": 2, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0}
+		],
+		"sectors": [
+			{"walls": [0, 1, 2, 3], "inner": [], "floor_height": 0.0, "ceiling_height": 256.0,
+				"floor_texture": "BASICLIB/BLACK.png", "ceiling_texture": "",
+				"floor_slope": [[0, 0.0], [1, 32.0], [3, 64.0]], "ceiling_slope": [], "flags": 0},
+			{"walls": [4, 5, 6, 1], "inner": [], "floor_height": 8.0, "ceiling_height": 256.0,
+				"floor_texture": "", "ceiling_texture": "",
+				"floor_slope": [[4, 16.0]], "ceiling_slope": [], "flags": 0},
+			{"walls": [7, 8, 9, 0, 10], "inner": [], "floor_height": 0.0, "ceiling_height": 256.0,
+				"floor_texture": "", "ceiling_texture": "",
+				"floor_slope": [], "ceiling_slope": [[6, 256.0], [8, 288.0], [7, 256.0]], "flags": 0}
+		]
+	},
+	"objects": [],
+	"art": {},
+	"gameplay": {}
+}

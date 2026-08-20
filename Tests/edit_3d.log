@@ -1,0 +1,38 @@
+PASS: slope fixture loads
+PASS: valid sloped sector not flagged
+PASS: incomplete slope flagged (floor_slope: incomplete slope (1/3 corners))
+PASS: collinear slope flagged (ceiling_slope: collinear slope corners)
+PASS: valid 3-corner slope not flagged
+PASS: plane height at far corner (96.000000)
+PASS: plane height at center (48.000000)
+PASS: no slope: flat height
+PASS: incomplete slope: flat
+PASS: incomplete slope flagged
+PASS: ray down hits floor
+PASS: floor hit sector 0
+PASS: floor hit at y=0
+PASS: ray up hits ceiling
+PASS: ray sideways hits wall
+PASS: wall id resolved
+PASS: ray into the void hits nothing
+PASS: floor raised by one tick
+PASS: floor lowered back
+PASS: floor >= ceiling flagged
+PASS: 2 corners: still flagged incomplete
+PASS: 3 corners: slope valid
+PASS: sloped sector still builds (not skipped)
+PASS: floor heights vary with slope (0.0..96.0)
+PASS: offset_u applied
+PASS: offset_v applied
+PASS: wall UV u includes offset (0.250000)
+PASS: known texture resolves
+PASS: bogus texture rejected
+PASS: missing texture reported
+PASS: textured floor group committed
+PASS: slope-flagged sectors still build (flat)
+PASS: round-trip parses
+PASS: slope survives round-trip
+PASS: slope entries typed (int, float)
+PASS: wall offsets survive
+PASS: texture names survive
+ALL TESTS PASSED

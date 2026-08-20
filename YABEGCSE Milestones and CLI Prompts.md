@@ -122,6 +122,18 @@ tolerate + flag: invalid slope data degrades to flat rendering plus a red
 flag, never a crash. Plan mode: produce the plan only.
 ```
 
+### Session 4 — M4: objects
+```
+Read the three YABEGCSE documents. Implement M4 per its acceptance
+criteria: place/move/rotate billboards, wall-objects, 8-view sprites,
+fluids and platforms, in both 2D and 3D modes. Objects clip geometry
+freely; alpha-keyed transparency renders; sprites render the correct view
+for the player angle (8-way logic). Art references stay library-relative
+names via ArtCache; objects round-trip through the v0 `objects` section.
+Keep tolerate + flag: unresolved art renders as a placeholder plus a
+debug-panel entry, never a crash. Plan mode: produce the plan only.
+```
+
 ## 3. Standing instructions for every CLI session
 
 - Godot 4.4.1, GDScript only. No plugins, no native code.

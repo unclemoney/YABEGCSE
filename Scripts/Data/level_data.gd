@@ -45,6 +45,8 @@ var flagged_walls: Dictionary = {}  # wall id -> reason String
 ##             "inner": [[wall ids]],  inner loops (sector-within-sector)
 ##             "floor_height": float, "ceiling_height": float,
 ##             "floor_texture": String, "ceiling_texture": String,
+##             "floor_slope": [[point_id, height] x3],   optional; empty or
+##             "ceiling_slope": [[point_id, height] x3], incomplete = flat
 ##             "flags": int}           reserved, 0
 
 

@@ -7,6 +7,14 @@ extends Node3D
 ## (SectorMeshBuilder output), the WorldEnvironment (fog/void) and the
 ## player WalkController. Meshes rebuild eagerly on every geometry change
 ## so the 2D<->3D toggle stays zero-lag.
+##
+## M3: computes the crosshair AimInfo (GeometryOps.aim_from_ray) every
+## frame and signals edit input upward; EditorController routes it to the
+## ToolSystem. Mouse-look is suppressed while a corner drag is active
+## (set_look_suppressed, called down by the controller).
+
+signal edit_input(event: InputEvent, aim: Dictionary)
+signal edit_motion(relative: Vector2, aim: Dictionary)
 
 @export var world_env_path: NodePath = ^"WorldEnvironment"
 @export var level_root_path: NodePath = ^"Level3DRoot"
@@ -14,6 +22,8 @@ extends Node3D
 
 var _level_data: LevelData
 var _spawned := false
+var _look_suppressed := false
+var _aim := {"kind": &"none"}
 
 @onready var _world_env: WorldEnvironment = get_node_or_null(world_env_path)
 @onready var _level_root: Node3D = get_node_or_null(level_root_path)
@@ -30,15 +40,33 @@ func set_level_data(data: LevelData) -> void:
 		_player.set_level_data(data)
 
 
-## rebuild()
+## rebuild() -> Dictionary
 ##
 ## Called down by EditorController on level changes. Cheap enough to run
 ## eagerly at editor scale; the 3D view is always ready when toggled to.
-func rebuild() -> void:
+## Returns the SectorMeshBuilder stats (missing_textures feeds the debug
+## panel).
+func rebuild() -> Dictionary:
 	if _level_root == null or _level_data == null:
-		return
-	SectorMeshBuilder.build_level(_level_root, _level_data, _step_height())
+		return {}
+	var stats := SectorMeshBuilder.build_level(_level_root, _level_data, _step_height())
 	_apply_environment()
+	return stats
+
+
+## get_aim() -> Dictionary
+##
+## The current crosshair AimInfo (read-only query from the controller).
+func get_aim() -> Dictionary:
+	return _aim
+
+
+## set_look_suppressed(suppressed)
+##
+## Called down by EditorController: while a corner drag is active, mouse
+## motion drives the drag instead of the camera.
+func set_look_suppressed(suppressed: bool) -> void:
+	_look_suppressed = suppressed
 
 
 ## enter_3d() / exit_3d()
@@ -56,10 +84,18 @@ func exit_3d() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
+func _process(_delta: float) -> void:
+	_update_aim()
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		if _player != null:
-			_player.look((event as InputEventMouseMotion).relative)
+		var relative := (event as InputEventMouseMotion).relative
+		# Edit route first: the controller/tool may claim the motion for a
+		# corner drag and suppress look synchronously.
+		edit_motion.emit(relative, _aim)
+		if not _look_suppressed and _player != null:
+			_player.look(relative)
 		get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed("toggle_fog"):
@@ -68,6 +104,29 @@ func _unhandled_input(event: InputEvent) -> void:
 			settings.fog_enabled = not settings.fog_enabled
 			_apply_environment()
 			get_viewport().set_input_as_handled()
+		return
+	# M3 edit input: wheel, grab/release, T, X. The controller decides
+	# whether the tool consumes it.
+	edit_input.emit(event, _aim)
+
+
+## _update_aim()
+##
+## Crosshair ray: camera through screen center, resolved against the level
+## geometry (pure math, no physics query — floors/ceilings have no
+## collision shapes).
+func _update_aim() -> void:
+	if _level_data == null or _player == null:
+		_aim = {"kind": &"none"}
+		return
+	var camera := _player.get_node_or_null("Camera3D") as Camera3D
+	if camera == null:
+		_aim = {"kind": &"none"}
+		return
+	var center := get_viewport().get_visible_rect().size * 0.5
+	var origin := camera.project_ray_origin(center)
+	var dir := camera.project_ray_normal(center)
+	_aim = GeometryOps.aim_from_ray(_level_data, origin, dir)
 
 
 ## _apply_environment()

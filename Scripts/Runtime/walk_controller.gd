@@ -73,5 +73,5 @@ func _physics_process(delta: float) -> void:
 	var sector_id := GeometryOps.sector_at(_level_data, Vector2(global_position.x, global_position.z))
 	if sector_id == -1:
 		return  # the void: hold height, degrade gracefully
-	var target := float(_level_data.sectors[sector_id].get("floor_height", 0.0))
+	var target := GeometryOps.floor_height_at(_level_data, sector_id, Vector2(global_position.x, global_position.z))
 	global_position.y = lerpf(global_position.y, target, minf(1.0, delta * 12.0))
