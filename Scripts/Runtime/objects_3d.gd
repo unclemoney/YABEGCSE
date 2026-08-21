@@ -14,6 +14,7 @@ var _level_data: LevelData
 var _player: Node3D
 var _fluids: Array = []  # {"sprite": Sprite3D, "frames": Array[String], "fps": float}
 var _eight_way: Array = []  # {"sprite": Sprite3D, "obj": Dictionary}
+var _by_index: Dictionary = {}  # object index -> Sprite3D (M7 runtime hide)
 var _time := 0.0
 
 
@@ -35,12 +36,27 @@ func rebuild() -> void:
 		child.free()
 	_fluids.clear()
 	_eight_way.clear()
+	_by_index.clear()
 	if _level_data == null:
 		return
 	for i in range(_level_data.objects.size()):
 		if _level_data.flagged_objects.has(i):
 			continue
-		_spawn(_level_data.objects[i])
+		_spawn(_level_data.objects[i], i)
+
+
+## hide_object(idx) / reset_hidden()
+##
+## M7 remove_object action: runtime-only visibility toggle. LevelData is
+## never mutated; every rebuild restores all instances.
+func hide_object(idx: int) -> void:
+	if _by_index.has(idx):
+		(_by_index[idx] as Sprite3D).visible = false
+
+
+func reset_hidden() -> void:
+	for idx in _by_index:
+		(_by_index[idx] as Sprite3D).visible = true
 
 
 func _process(delta: float) -> void:
@@ -56,7 +72,7 @@ func _process(delta: float) -> void:
 			_update_view(e["sprite"], e["obj"])
 
 
-func _spawn(obj: Dictionary) -> void:
+func _spawn(obj: Dictionary, index: int) -> void:
 	var type := str(obj.get("type", ""))
 	var frames := ArtCache.resolve_object_frames(obj)
 	var pos := ObjectOps.get_pos(obj)
@@ -93,6 +109,7 @@ func _spawn(obj: Dictionary) -> void:
 		sprite.scale = Vector3(size.x / tex_size.x, size.y / tex_size.y, 1.0)
 		sprite.position.y = z + size.y * 0.5
 	add_child(sprite)
+	_by_index[index] = sprite
 	if type == "fluid" and frames.size() > 1:
 		_fluids.append({"sprite": sprite, "frames": frames, "fps": float(obj["params"].get("fps", 8.0))})
 	elif type == "sprite_8way":

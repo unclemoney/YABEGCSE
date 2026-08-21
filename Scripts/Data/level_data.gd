@@ -11,7 +11,7 @@ extends Resource
 
 signal level_changed(change_type: ChangeType)
 
-enum ChangeType { GEOMETRY, OBJECTS, ENVIRONMENT, META, FULL_RELOAD }
+enum ChangeType { GEOMETRY, OBJECTS, ENVIRONMENT, META, GAMEPLAY, FULL_RELOAD }
 
 const FORMAT_ID := "yabegcse-level"
 const FORMAT_VERSION := 0
@@ -24,7 +24,9 @@ var walls: Array = []
 var sectors: Array = []
 var objects: Array = []
 var art: Dictionary = {}
-## Reserved namespace (M7). Stored verbatim; never interpreted before then.
+## Gameplay section (M7): triggers / registers / scripts / music / links.
+## Stored verbatim (raw JSON shape); GameplayOps computes the validated
+## view + notes at consumption time — never stored here.
 var gameplay: Dictionary = {}
 ## Unknown top-level sections, plus unknown geometry fields under
 ## the "geometry" key. Written back verbatim on save.
@@ -69,6 +71,8 @@ static func create_empty() -> LevelData:
 	data.environment = {
 		"fog": {"enabled": true, "color": "#202830", "near": 128.0, "far": 1536.0},
 		"ambient": 1.0,
+		"sky": {"mode": "flat", "color": "#202830", "strip": ""},
+		"void": {"mode": "fog_color"},
 	}
 	return data
 

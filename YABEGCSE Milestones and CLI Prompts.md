@@ -159,6 +159,19 @@ environment data falls back to defaults plus a debug-panel note, never a
 crash. Plan mode: produce the plan only.
 ```
 
+### Session 7 — M7: triggers / gameplay
+```
+Read the three YABEGCSE documents. Implement M7 per its acceptance
+criteria: activate the reserved `gameplay` schema — triggers (fluid
+command equivalents), registers (the universe-register variable model),
+scripts (redesigned-in-spirit behavior logic, never a Forth interpreter),
+music (WAV reference), and links (level-to-level connections, the
+theaters.txt descendant). Editor-settable, stored in the v0 `gameplay`
+section, and exercised in play-test. Keep tolerate + flag: malformed
+gameplay data is skipped with a debug-panel entry, never a crash. Design
+the schema now that M1–M6 are proven. Plan mode: produce the plan only.
+```
+
 ## 3. Standing instructions for every CLI session
 
 - Godot 4.4.1, GDScript only. No plugins, no native code.

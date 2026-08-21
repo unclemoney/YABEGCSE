@@ -383,6 +383,33 @@ func end_object_drag() -> void:
 	pass
 
 
+## commit_environment(env)
+##
+## M6: replaces the level's environment section (Environment panel
+## Apply). One mutation = one undo step. The panel passes raw field
+## values; malformed entries are tolerated and flagged by
+## EnvironmentOps at consumption time.
+func commit_environment(env: Dictionary) -> void:
+	if _level_data == null:
+		return
+	mutation_committed.emit()
+	_level_data.environment = env.duplicate(true)
+	level_data_changed.emit(LevelData.ChangeType.ENVIRONMENT)
+
+
+## commit_gameplay(gameplay)
+##
+## M7: replaces the level's gameplay section (Gameplay panel Apply). One
+## mutation = one undo step. The panel passes raw field values; malformed
+## entries are tolerated and flagged by GameplayOps at consumption time.
+func commit_gameplay(gameplay: Dictionary) -> void:
+	if _level_data == null:
+		return
+	mutation_committed.emit()
+	_level_data.gameplay = gameplay.duplicate(true)
+	level_data_changed.emit(LevelData.ChangeType.GAMEPLAY)
+
+
 ## debug_place_test_set()
 ##
 ## Debug-panel command: one object of each type near the origin, using

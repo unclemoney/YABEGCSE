@@ -19,4 +19,6 @@ PASS: Delete removes hovered object
 PASS: undo restores the object
 PASS: clear level wipes geometry
 PASS: clear level wipes points
+PASS: commit_environment applies
+PASS: undo restores environment
 ALL TESTS PASSED

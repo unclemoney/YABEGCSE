@@ -27,6 +27,7 @@ var mode: Mode = Mode.MODE_2D
 var _serializer := LevelSerializer.new()
 var _current_path := ""
 var _picker_brush_mode := false
+var _picker_sky_mode := false
 
 @onready var _canvas_2d: Canvas2DView = get_node_or_null(canvas_2d_path)
 @onready var _viewport_3d: Viewport3DView = get_node_or_null(viewport_3d_path)
@@ -47,6 +48,12 @@ func _ready() -> void:
 	if _viewport_3d != null:
 		_viewport_3d.edit_input.connect(_on_3d_edit_input)
 		_viewport_3d.edit_motion.connect(_on_3d_edit_motion)
+		var gameplay := _viewport_3d.get_gameplay()
+		if gameplay != null:
+			gameplay.message_shown.connect(_on_gameplay_message)
+			gameplay.warp_requested.connect(_on_gameplay_warp)
+			gameplay.event_logged.connect(_on_gameplay_event)
+			gameplay.registers_changed.connect(_on_gameplay_registers_changed)
 	if _tool_system != null:
 		_tool_system.mutation_committed.connect(_push_undo_snapshot)
 		_tool_system.level_data_changed.connect(_on_level_data_changed)
@@ -65,6 +72,14 @@ func _ready() -> void:
 		_ui_panels.brush_art_requested.connect(_on_brush_art_requested)
 		_ui_panels.debug_place_objects.connect(_on_debug_place_objects)
 		_ui_panels.debug_import_fixture.connect(_on_debug_import_fixture)
+		_ui_panels.environment_editor_requested.connect(_on_environment_editor_requested)
+		_ui_panels.environment_applied.connect(_on_environment_applied)
+		_ui_panels.sky_strip_pick_requested.connect(_on_sky_strip_pick_requested)
+		_ui_panels.preferences_editor_requested.connect(_on_preferences_editor_requested)
+		_ui_panels.preferences_applied.connect(_on_preferences_applied)
+		_ui_panels.gameplay_editor_requested.connect(_on_gameplay_editor_requested)
+		_ui_panels.gameplay_applied.connect(_on_gameplay_applied)
+		_ui_panels.panel_closed.connect(_on_texture_picker_closed)
 	_apply_mode()
 
 
@@ -104,6 +119,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("debug_import_fixture"):
 		# Debug command (F10): import the bundled DOS 1.3 fixture pair.
 		_on_debug_import_fixture()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("debug_cycle_sky"):
+		# Debug command (F11): cycle the level's sky mode (flat <-> strip).
+		_on_debug_cycle_sky()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("debug_gameplay_fixture"):
+		# Debug command (F9): load the gameplay fixture (see DebugPanel).
+		open_level("res://Tests/Fixtures/level_gameplay_v0.json")
 		get_viewport().set_input_as_handled()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		var key := event as InputEventKey
@@ -194,10 +217,16 @@ func _on_3d_edit_motion(relative: Vector2, aim: Dictionary) -> void:
 func _on_texture_pick_requested(_aim: Dictionary) -> void:
 	if _ui_panels != null:
 		_picker_brush_mode = false
+		_picker_sky_mode = false
 		_ui_panels.open_texture_picker()
 
 
 func _on_texture_picked(tex_name: String) -> void:
+	if _picker_sky_mode:
+		_picker_sky_mode = false
+		if _ui_panels != null:
+			_ui_panels.set_sky_strip_art(tex_name.trim_suffix(".png"))
+		return
 	if _tool_system == null:
 		return
 	if _picker_brush_mode:
@@ -205,6 +234,124 @@ func _on_texture_picked(tex_name: String) -> void:
 		_update_brush_status()
 	else:
 		_tool_system.commit_texture(tex_name)
+
+
+## _on_environment_editor_requested() / _on_environment_applied(env)
+##
+## M6 environment panel: opened with the level's current environment;
+## Apply commits through ToolSystem (one undo step).
+func _on_environment_editor_requested() -> void:
+	if _ui_panels != null:
+		_ui_panels.open_environment_panel(level_data.environment)
+
+
+func _on_environment_applied(env: Dictionary) -> void:
+	if _tool_system != null:
+		_tool_system.commit_environment(env)
+		if _ui_panels != null:
+			_ui_panels.set_status("Environment updated.")
+
+
+func _on_sky_strip_pick_requested() -> void:
+	if _ui_panels != null:
+		_picker_brush_mode = false
+		_picker_sky_mode = true
+		_ui_panels.open_texture_picker()
+
+
+## _on_preferences_editor_requested() / _on_preferences_applied(prefs)
+##
+## M6 preferences panel: writes GameSettings and persists to
+## user://game_settings.cfg. Step height affects collision risers, so the
+## 3D level rebuilds; eye height applies to the camera immediately.
+func _on_preferences_editor_requested() -> void:
+	var settings := get_node_or_null("/root/GameSettings")
+	if settings != null and _ui_panels != null:
+		_ui_panels.open_preferences_panel(settings)
+
+
+func _on_preferences_applied(prefs: Dictionary) -> void:
+	var settings := get_node_or_null("/root/GameSettings")
+	if settings == null:
+		return
+	settings.walk_speed = prefs["walk_speed"]
+	settings.mouse_sensitivity = prefs["mouse_sensitivity"]
+	settings.eye_height = prefs["eye_height"]
+	settings.step_height = prefs["step_height"]
+	settings.fog_enabled = prefs["fog_enabled"]
+	settings.save_settings()
+	if _viewport_3d != null:
+		_viewport_3d.apply_preferences()
+		_viewport_3d.rebuild()
+	if _ui_panels != null:
+		_ui_panels.set_status("Preferences saved.")
+
+
+## _on_gameplay_editor_requested() / _on_gameplay_applied(gameplay)
+##
+## M7 gameplay panel: opened with the level's current gameplay section;
+## Apply commits through ToolSystem (one undo step).
+func _on_gameplay_editor_requested() -> void:
+	if _ui_panels != null:
+		_ui_panels.open_gameplay_panel(level_data.gameplay)
+
+
+func _on_gameplay_applied(gameplay: Dictionary) -> void:
+	if _tool_system != null:
+		_tool_system.commit_gameplay(gameplay)
+		if _ui_panels != null:
+			_ui_panels.set_status("Gameplay updated.")
+
+
+## Play-test gameplay runtime signals (M7): messages to the status line,
+## events to the debug panel's gameplay log, register watch refreshes on
+## change.
+func _on_gameplay_message(text: String) -> void:
+	if _ui_panels != null:
+		_ui_panels.set_status(text)
+
+
+func _on_gameplay_event(text: String) -> void:
+	if _ui_panels != null:
+		_ui_panels.log_gameplay_event(text)
+
+
+func _on_gameplay_registers_changed() -> void:
+	if _ui_panels == null or _viewport_3d == null:
+		return
+	var gameplay := _viewport_3d.get_gameplay()
+	if gameplay != null:
+		_ui_panels.set_register_watch(gameplay.get_watch())
+
+
+## _on_gameplay_warp(link)
+##
+## Warp action: loads the linked level (file resolved relative to the
+## current level's directory) and restarts the play-test in it — the
+## theaters.txt descendant, live in play-test (GCS kept warps inert in
+## test mode; the editor can do better). A missing target is a debug-log
+## entry, never a crash.
+func _on_gameplay_warp(link: Dictionary) -> void:
+	var file := str(link.get("file", ""))
+	if _current_path.is_empty():
+		_on_gameplay_event("warp to '%s' ignored: level has no file on disk" % file)
+		if _ui_panels != null:
+			_ui_panels.set_status("Warp ignored: save the level first.")
+		return
+	var path := (_current_path.get_base_dir() + "/" + file).simplify_path()
+	if not FileAccess.file_exists(path):
+		_on_gameplay_event("warp target missing: %s" % file)
+		if _ui_panels != null:
+			_ui_panels.set_status("Warp target not found: " + file)
+		return
+	var entry: Array = link.get("entry", [])
+	open_level(path)
+	if _viewport_3d != null:
+		if not entry.is_empty():
+			_viewport_3d.spawn_player_at(entry)
+		_viewport_3d.restart_playtest()
+	if _ui_panels != null:
+		_ui_panels.set_status("Warped to: " + file)
 
 
 func _on_brush_type_selected(type: String) -> void:
@@ -217,6 +364,7 @@ func _on_brush_type_selected(type: String) -> void:
 func _on_brush_art_requested() -> void:
 	if _ui_panels != null:
 		_picker_brush_mode = true
+		_picker_sky_mode = false
 		_ui_panels.open_texture_picker()
 
 
@@ -233,6 +381,29 @@ func _on_debug_place_objects() -> void:
 ## commands skip the confirm dialog (same as fixture loads).
 func _on_debug_import_fixture() -> void:
 	_on_import_confirmed("res://Tests/Fixtures/UNIV0.TXT")
+
+
+## _on_debug_cycle_sky()
+##
+## Debug command (F11): toggles the level's sky between flat and a
+## horizon strip (SOBJ_LIB/SKYSIDE). Goes through commit_environment, so
+## it is an ordinary undoable edit.
+func _on_debug_cycle_sky() -> void:
+	if _tool_system == null or level_data == null:
+		return
+	var env := level_data.environment.duplicate(true)
+	var sky: Dictionary = env.get("sky", {"mode": "flat", "color": "#202830", "strip": ""})
+	if str(sky.get("mode", "flat")) == "horizon_strip":
+		sky["mode"] = "flat"
+		if _ui_panels != null:
+			_ui_panels.set_status("Sky: flat")
+	else:
+		sky["mode"] = "horizon_strip"
+		sky["strip"] = "SOBJ_LIB/SKYSIDE"
+		if _ui_panels != null:
+			_ui_panels.set_status("Sky: horizon strip (SOBJ_LIB/SKYSIDE)")
+	env["sky"] = sky
+	_tool_system.commit_environment(env)
 
 
 ## _on_import_confirmed(univ_path)
@@ -327,6 +498,8 @@ func _push_undo_snapshot() -> void:
 		"walls": level_data.walls.duplicate(true),
 		"sectors": level_data.sectors.duplicate(true),
 		"objects": level_data.objects.duplicate(true),
+		"environment": level_data.environment.duplicate(true),
+		"gameplay": level_data.gameplay.duplicate(true),
 	})
 
 
@@ -340,6 +513,8 @@ func _undo() -> void:
 	level_data.walls = snapshot["walls"].duplicate(true)
 	level_data.sectors = snapshot["sectors"].duplicate(true)
 	level_data.objects = snapshot.get("objects", []).duplicate(true)
+	level_data.environment = snapshot.get("environment", level_data.environment).duplicate(true)
+	level_data.gameplay = snapshot.get("gameplay", level_data.gameplay).duplicate(true)
 	GeometryOps.validate(level_data)
 	_on_level_data_changed(LevelData.ChangeType.GEOMETRY)
 	if _ui_panels != null:
@@ -378,6 +553,8 @@ func _on_level_data_changed(_change_type: LevelData.ChangeType) -> void:
 		var stats := _viewport_3d.rebuild()
 		if _ui_panels != null and stats.has("missing_textures"):
 			_ui_panels.set_missing_textures(stats["missing_textures"])
+			_ui_panels.set_environment_notes(stats.get("environment_notes", []))
+			_ui_panels.set_gameplay_notes(stats.get("gameplay_notes", []))
 	if _ui_panels != null and level_data != null:
 		_ui_panels.set_debug_flags(
 			level_data.flagged_sectors, level_data.flagged_walls, level_data.flagged_objects

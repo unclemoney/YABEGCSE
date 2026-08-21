@@ -20,6 +20,16 @@ signal brush_type_selected(type: String)
 signal brush_art_requested
 signal debug_place_objects
 signal debug_import_fixture
+signal environment_editor_requested
+signal environment_applied(env: Dictionary)
+signal sky_strip_pick_requested
+signal preferences_editor_requested
+signal preferences_applied(prefs: Dictionary)
+signal gameplay_editor_requested
+signal gameplay_applied(gameplay: Dictionary)
+## Any modal panel closed (picker, environment, preferences): 3D mode
+## re-captures the mouse.
+signal panel_closed
 
 var _mode_label: Label
 var _status_label: Label
@@ -30,6 +40,9 @@ var _import_dialog: FileDialog
 var _import_confirm: ConfirmationDialog
 var _pending_import := ""
 var _debug_panel: DebugPanel
+var _environment_panel: EnvironmentPanel
+var _preferences_panel: PreferencesPanel
+var _gameplay_panel: GameplayPanel
 var _texture_picker: TexturePicker
 var _crosshair: ColorRect
 
@@ -103,6 +116,68 @@ func open_texture_picker() -> void:
 	_texture_picker.open()
 
 
+## open_environment_panel(env) / open_preferences_panel(settings)
+##
+## M6: called down by EditorController with the current values (the
+## panels never touch LevelData or GameSettings themselves).
+func open_environment_panel(env: Dictionary) -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_environment_panel.open_with(env)
+
+
+func open_preferences_panel(settings: Node) -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_preferences_panel.open_with(settings)
+
+
+## open_gameplay_panel(gameplay)
+##
+## M7: called down by EditorController with the level's raw gameplay
+## section (the panel never touches LevelData itself).
+func open_gameplay_panel(gameplay: Dictionary) -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_gameplay_panel.open_with(gameplay)
+
+
+## set_sky_strip_art(base_name)
+##
+## Routes a sky-strip TexturePicker result into the environment panel.
+func set_sky_strip_art(base_name: String) -> void:
+	_environment_panel.set_strip_art(base_name)
+
+
+## set_environment_notes(notes)
+##
+## Pass-through to the debug panel: environment fields that fell back to
+## defaults (EnvironmentOps).
+func set_environment_notes(notes: Array) -> void:
+	if _debug_panel != null:
+		_debug_panel.set_environment_notes(notes)
+
+
+## set_gameplay_notes(notes)
+##
+## Pass-through to the debug panel: gameplay entries skipped or defaulted
+## by GameplayOps (M7 tolerate + flag).
+func set_gameplay_notes(notes: Array) -> void:
+	if _debug_panel != null:
+		_debug_panel.set_gameplay_notes(notes)
+
+
+## log_gameplay_event(text) / set_register_watch(text)
+##
+## Pass-throughs to the debug panel: the play-test gameplay event log and
+## the live register watch (M7).
+func log_gameplay_event(text: String) -> void:
+	if _debug_panel != null:
+		_debug_panel.log_gameplay_event(text)
+
+
+func set_register_watch(text: String) -> void:
+	if _debug_panel != null:
+		_debug_panel.set_register_watch(text)
+
+
 func _refresh_status() -> void:
 	if _status_label == null:
 		return
@@ -131,6 +206,9 @@ func _build_ui() -> void:
 	edit_menu.text = "Edit"
 	var edit_popup := edit_menu.get_popup()
 	edit_popup.add_item("Clear Level", 0)
+	edit_popup.add_item("Environment...", 1)
+	edit_popup.add_item("Preferences...", 2)
+	edit_popup.add_item("Gameplay...", 3)
 	edit_popup.id_pressed.connect(_on_edit_menu_id_pressed)
 	top_bar.add_child(edit_menu)
 
@@ -213,6 +291,48 @@ func _build_ui() -> void:
 	_debug_panel.debug_import_fixture.connect(
 		func() -> void: debug_import_fixture.emit()
 	)
+	_debug_panel.environment_editor_requested.connect(
+		func() -> void: environment_editor_requested.emit()
+	)
+	_debug_panel.preferences_editor_requested.connect(
+		func() -> void: preferences_editor_requested.emit()
+	)
+	_debug_panel.gameplay_editor_requested.connect(
+		func() -> void: gameplay_editor_requested.emit()
+	)
+
+	# M6 panels, hosted here; created before the texture picker so the
+	# picker (sky-strip art pick) draws on top of the environment panel.
+	_environment_panel = EnvironmentPanel.new()
+	_environment_panel.visible = false
+	add_child(_environment_panel)
+	_environment_panel.set_anchors_preset(Control.PRESET_FULL_RECT, true)
+	_environment_panel.environment_applied.connect(
+		func(env: Dictionary) -> void: environment_applied.emit(env)
+	)
+	_environment_panel.strip_pick_requested.connect(
+		func() -> void: sky_strip_pick_requested.emit()
+	)
+	_environment_panel.closed.connect(func() -> void: panel_closed.emit())
+
+	_preferences_panel = PreferencesPanel.new()
+	_preferences_panel.visible = false
+	add_child(_preferences_panel)
+	_preferences_panel.set_anchors_preset(Control.PRESET_FULL_RECT, true)
+	_preferences_panel.preferences_applied.connect(
+		func(prefs: Dictionary) -> void: preferences_applied.emit(prefs)
+	)
+	_preferences_panel.closed.connect(func() -> void: panel_closed.emit())
+
+	# M7 gameplay panel, hosted like the other modals.
+	_gameplay_panel = GameplayPanel.new()
+	_gameplay_panel.visible = false
+	add_child(_gameplay_panel)
+	_gameplay_panel.set_anchors_preset(Control.PRESET_FULL_RECT, true)
+	_gameplay_panel.gameplay_applied.connect(
+		func(gameplay: Dictionary) -> void: gameplay_applied.emit(gameplay)
+	)
+	_gameplay_panel.closed.connect(func() -> void: panel_closed.emit())
 
 	_texture_picker = TexturePicker.new()
 	_texture_picker.visible = false
@@ -255,6 +375,12 @@ func _on_edit_menu_id_pressed(id: int) -> void:
 	match id:
 		0:
 			_clear_dialog.popup_centered()
+		1:
+			environment_editor_requested.emit()
+		2:
+			preferences_editor_requested.emit()
+		3:
+			gameplay_editor_requested.emit()
 
 
 func _on_object_menu_id_pressed(id: int) -> void:

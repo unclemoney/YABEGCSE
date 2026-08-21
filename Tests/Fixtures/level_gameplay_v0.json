@@ -1,0 +1,123 @@
+{
+	"header": {
+		"format": "yabegcse-level",
+		"version": 0,
+		"generator": "fixture"
+	},
+	"meta": {
+		"name": "Gameplay Fixture",
+		"author": "test",
+		"description": "two rooms + platform; working trigger chain plus deliberately malformed gameplay entries"
+	},
+	"environment": {},
+	"geometry": {
+		"points": [[0, 0], [256, 0], [256, 256], [0, 256], [512, 0], [512, 256]],
+		"walls": [
+			{"a": 0, "b": 1, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 1, "b": 2, "front": 0, "back": 1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 2, "b": 3, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 3, "b": 0, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 1, "b": 4, "front": 1, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 4, "b": 5, "front": 1, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 5, "b": 2, "front": 1, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0}
+		],
+		"sectors": [
+			{"walls": [0, 1, 2, 3], "inner": [], "floor_height": 0.0, "ceiling_height": 256.0, "floor_texture": "", "ceiling_texture": "", "flags": 0},
+			{"walls": [4, 5, 6, 1], "inner": [], "floor_height": 0.0, "ceiling_height": 256.0, "floor_texture": "", "ceiling_texture": "", "flags": 0}
+		]
+	},
+	"objects": [
+		{"type": "platform", "pos": [384.0, 128.0], "z": 0.0, "angle": 0.0, "art": "", "params": {"scale": 1.0, "size": [64.0, 64.0]}}
+	],
+	"art": {},
+	"gameplay": {
+		"registers": {
+			"initial": {"5": 1, "9": 0, "0": 7, "123": 55},
+			"names": {"5": "key", "9": "beats"}
+		},
+		"triggers": [
+			{
+				"id": "welcome",
+				"event": "level_start",
+				"actions": [
+					{"do": "message", "text": "Welcome to the gameplay fixture"}
+				]
+			},
+			{
+				"id": "second_room",
+				"event": "enter_sector",
+				"sector": 1,
+				"actions": [
+					{"do": "set_register", "reg": 5, "value": 2},
+					{"do": "message", "text": "Sector 1 reached"}
+				]
+			},
+			{
+				"id": "pad",
+				"event": "near_object",
+				"object": 0,
+				"radius": 400.0,
+				"condition": {"reg": 5, "op": "eq", "value": 2},
+				"actions": [
+					{"do": "play_sound", "art": "MUSIC/TEST_TONE"},
+					{"do": "remove_object", "object": 0},
+					{"do": "run_script", "script": "warp_home"}
+				]
+			},
+			{
+				"id": "heartbeat",
+				"event": "timer",
+				"every": 5.0,
+				"once": false,
+				"actions": [
+					{"do": "add_register", "reg": 9, "value": 1}
+				]
+			},
+			{
+				"id": "bad_event",
+				"event": "explode",
+				"actions": [
+					{"do": "message", "text": "never runs"}
+				]
+			},
+			{
+				"id": "bad_sector",
+				"event": "enter_sector",
+				"sector": 99,
+				"actions": [
+					{"do": "message", "text": "never runs"}
+				]
+			},
+			{
+				"id": "bad_verb",
+				"event": "level_start",
+				"actions": [
+					{"do": "nuke"}
+				]
+			},
+			{
+				"id": "bad_condition",
+				"event": "enter_sector",
+				"sector": 0,
+				"condition": "nope",
+				"actions": [
+					{"do": "message", "text": "condition dropped, trigger lives"}
+				]
+			}
+		],
+		"scripts": [
+			{
+				"id": "warp_home",
+				"steps": [
+					{"do": "message", "text": "Warping..."},
+					{"do": "warp", "link": "self"}
+				]
+			}
+		],
+		"music": {"enabled": true, "track": "MUSIC/TEST_TONE"},
+		"links": [
+			{"id": "self", "file": "level_gameplay_v0.json", "entry": [128.0, 128.0, 0.0, 0.0]},
+			{"id": "nowhere", "file": "no_such_level.json"}
+		]
+	}
+}

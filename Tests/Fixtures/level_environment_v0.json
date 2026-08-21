@@ -1,0 +1,33 @@
+{
+	"header": {
+		"format": "yabegcse-level",
+		"version": 0,
+		"generator": "fixture"
+	},
+	"meta": {
+		"name": "Environment Test",
+		"author": "test",
+		"description": "one room with a custom environment; fog.color is deliberately malformed to demo the tolerate+flag note path"
+	},
+	"environment": {
+		"fog": {"enabled": true, "color": "blurple", "near": 200.0, "far": 2048.0},
+		"ambient": 0.7,
+		"sky": {"mode": "horizon_strip", "color": "#3a4a5a", "strip": "SOBJ_LIB/SKYSIDE"},
+		"void": {"mode": "sky_color"}
+	},
+	"geometry": {
+		"points": [[0, 0], [256, 0], [256, 256], [0, 256]],
+		"walls": [
+			{"a": 0, "b": 1, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 1, "b": 2, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 2, "b": 3, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0},
+			{"a": 3, "b": 0, "front": 0, "back": -1, "texture": "", "offset_u": 0, "offset_v": 0}
+		],
+		"sectors": [
+			{"walls": [0, 1, 2, 3], "inner": [], "floor_height": 0.0, "ceiling_height": 256.0, "floor_texture": "", "ceiling_texture": "", "flags": 0}
+		]
+	},
+	"objects": [],
+	"art": {},
+	"gameplay": {}
+}

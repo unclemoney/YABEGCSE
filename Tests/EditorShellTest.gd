@@ -39,6 +39,7 @@ func _begin() -> void:
 	_test_save_load_portal()
 	_test_object_via_input()
 	_test_clear_level()
+	_test_environment_undo()
 	_finish()
 
 
@@ -122,6 +123,26 @@ func _test_clear_level() -> void:
 	_ui.clear_confirmed.emit()
 	_check(_controller.level_data.sectors.is_empty(), "clear level wipes geometry")
 	_check(_controller.level_data.points.is_empty(), "clear level wipes points")
+
+
+## _test_environment_undo()
+##
+## M6: commit_environment is an ordinary undoable edit (one snapshot,
+## restored by Ctrl+Z).
+func _test_environment_undo() -> void:
+	var tool_system := _controller.get_node("ToolSystem") as ToolSystem
+	var env := {
+		"fog": {"enabled": false, "color": "#112233", "near": 64.0, "far": 512.0},
+		"ambient": 2.0,
+		"sky": {"mode": "flat", "color": "#112233", "strip": ""},
+		"void": {"mode": "sky_color"},
+	}
+	tool_system.commit_environment(env)
+	_check(float(_controller.level_data.environment.get("ambient", 0.0)) == 2.0,
+		"commit_environment applies")
+	_ctrl_z()
+	_check(float(_controller.level_data.environment.get("ambient", 0.0)) == 1.0,
+		"undo restores environment")
 
 
 func _click(world: Vector2) -> void:

@@ -73,17 +73,29 @@ absolute paths). Palette identity tag for the level. The art library ships
 with the editor and runtime; unresolved references render as an obvious
 placeholder and log to the debug panel.
 
-### `gameplay` — **reserved namespace**
-Schema deliberately undefined until Milestone 7. Reserved slots, in the
-spirit of their GCS ancestors:
-- `triggers` — fluid command equivalents
-- `registers` — the universe-register variable model
-- `scripts` — redesigned-in-spirit behavior logic (no Forth)
-- `music` — WAV reference
-- `links` — level-to-level connections (`theaters.txt` descendant)
+### `gameplay` — **defined at Milestone 7**
+All five slots optional; malformed entries are skipped with a debug-panel note
+(tolerate + flag). The full semantics live in `Scripts/Data/gameplay_ops.gd`.
+- `registers` — the universe-register model: 256 registers, 0–255.
+  `{"initial": {"5": 100}, "names": {"5": "label"}}` — initial values apply on
+  every play-test entry; 0 and 122–127 are reserved (122–126 read-only live
+  stats: fps, health, …; 127 game-over), `names` are non-semantic editor hints.
+- `triggers` — fluid command equivalents:
+  `[{"id", "event": level_start|enter_sector|near_object|timer, "sector" |
+  "object"+"radius" | "every", "once", "condition": {"reg", "op": eq|ne|lt|gt,
+  "value"}, "actions": [...]}]`. Action verbs: `set_register`, `add_register`,
+  `message`, `play_sound`, `damage_player`, `remove_object` (runtime-only hide),
+  `warp`, `run_script`.
+- `scripts` — `[{"id", "steps": [action dicts]}]`: named reusable action lists
+  invoked by `run_script` (depth-capped). Redesigned in spirit — no Forth.
+- `music` — `{"enabled": bool, "track": "LIB/NAME"}`: library-relative WAV base
+  name, looped during play-test.
+- `links` — `[{"id", "file", "entry": [x, y, z, theta_deg] (optional)}]`:
+  level-to-level connections (the theaters.txt descendant). `warp` loads the
+  linked level in play-test, spawning at `entry` when present.
 
-Loaders before Milestone 7 must preserve this section verbatim on
-load/save round-trips (forward-compatibility for hand-built test content).
+Editors before Milestone 7 preserve this section verbatim on load/save
+round-trips; writers keep unknown sub-fields the same way.
 
 ## 2. What is explicitly NOT in v0
 

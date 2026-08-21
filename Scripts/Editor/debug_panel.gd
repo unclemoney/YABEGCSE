@@ -11,16 +11,25 @@ signal fixture_load_requested(path: String)
 signal texture_pick_requested
 signal debug_place_objects
 signal debug_import_fixture
+signal environment_editor_requested
+signal preferences_editor_requested
+signal gameplay_editor_requested
 
 var _panel: PanelContainer
 var _list: Label
 var _missing_textures: Array = []
 var _flags_text := ""
 var _import_text := ""
+var _environment_text := ""
+var _gameplay_text := ""
+var _gameplay_log: Array[String] = []
+var _watch_text := ""
 
 ## Cap for the rendered import report so a chatty import can't blow up
 ## the panel layout.
 const MAX_REPORT_LINES := 14
+## Ring buffer size for the M7 gameplay event log.
+const MAX_LOG_LINES := 8
 
 
 ## _ready()
@@ -102,10 +111,67 @@ func _clip(text: String) -> String:
 	return text.substr(0, 77) + "..."
 
 
+## set_environment_notes(notes)
+##
+## M6: environment fields that fell back to defaults (EnvironmentOps).
+## Recomputed on every level change; empty list clears the block.
+func set_environment_notes(notes: Array) -> void:
+	if notes.is_empty():
+		_environment_text = ""
+	else:
+		var lines: Array[String] = []
+		for note in notes:
+			lines.append("env: %s" % _clip(str(note)))
+		_environment_text = "\n".join(lines)
+	_render()
+
+
+## set_gameplay_notes(notes)
+##
+## M7: gameplay entries skipped or defaulted by GameplayOps. Recomputed
+## on every level change; empty list clears the block.
+func set_gameplay_notes(notes: Array) -> void:
+	if notes.is_empty():
+		_gameplay_text = ""
+	else:
+		var lines: Array[String] = []
+		for note in notes:
+			lines.append("gp: %s" % _clip(str(note)))
+		_gameplay_text = "\n".join(lines)
+	_render()
+
+
+## log_gameplay_event(text)
+##
+## M7: play-test runtime events (fired triggers, warps, sounds, game
+## over) — a small ring buffer, newest last.
+func log_gameplay_event(text: String) -> void:
+	_gameplay_log.append(_clip(text))
+	while _gameplay_log.size() > MAX_LOG_LINES:
+		_gameplay_log.remove_at(0)
+	_render()
+
+
+## set_register_watch(text)
+##
+## M7: the live nonzero-register readout during play-test ("" hides it).
+func set_register_watch(text: String) -> void:
+	_watch_text = text
+	_render()
+
+
 func _render() -> void:
 	if _list == null:
 		return
 	var text := _flags_text
+	if not _environment_text.is_empty():
+		text = _environment_text + "\n" + text
+	if not _gameplay_text.is_empty():
+		text = _gameplay_text + "\n" + text
+	if not _gameplay_log.is_empty():
+		text = "log: " + "\nlog: ".join(_gameplay_log) + "\n" + text
+	if not _watch_text.is_empty():
+		text = "regs: " + _watch_text + "\n" + text
 	if not _import_text.is_empty():
 		text = _import_text + "\n" + text
 	if not _missing_textures.is_empty():
@@ -179,3 +245,27 @@ func _build_ui() -> void:
 	gcs.text = "Import GCS fixture"
 	gcs.pressed.connect(func() -> void: debug_import_fixture.emit())
 	buttons.add_child(gcs)
+	var env_fixture := Button.new()
+	env_fixture.text = "Load env fixture"
+	env_fixture.pressed.connect(
+		func() -> void: fixture_load_requested.emit("res://Tests/Fixtures/level_environment_v0.json")
+	)
+	buttons.add_child(env_fixture)
+	var env_edit := Button.new()
+	env_edit.text = "Environment..."
+	env_edit.pressed.connect(func() -> void: environment_editor_requested.emit())
+	buttons.add_child(env_edit)
+	var prefs := Button.new()
+	prefs.text = "Preferences..."
+	prefs.pressed.connect(func() -> void: preferences_editor_requested.emit())
+	buttons.add_child(prefs)
+	var gp_fixture := Button.new()
+	gp_fixture.text = "Load gameplay fixture"
+	gp_fixture.pressed.connect(
+		func() -> void: fixture_load_requested.emit("res://Tests/Fixtures/level_gameplay_v0.json")
+	)
+	buttons.add_child(gp_fixture)
+	var gp_edit := Button.new()
+	gp_edit.text = "Gameplay..."
+	gp_edit.pressed.connect(func() -> void: gameplay_editor_requested.emit())
+	buttons.add_child(gp_edit)

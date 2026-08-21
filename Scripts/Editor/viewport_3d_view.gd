@@ -4,9 +4,10 @@ extends Node3D
 ## Viewport3DView
 ##
 ## 3D walk view. Read-only consumer of LevelData. Owns the Level3DRoot
-## (SectorMeshBuilder output), the WorldEnvironment (fog/void) and the
-## player WalkController. Meshes rebuild eagerly on every geometry change
-## so the 2D<->3D toggle stays zero-lag.
+## (SectorMeshBuilder output), the WorldEnvironment (fog/sky/ambient/void
+## via EnvironmentOps, M6), the horizon-strip sky band, and the player
+## WalkController. Meshes rebuild eagerly on every geometry change so the
+## 2D<->3D toggle stays zero-lag.
 ##
 ## M3: computes the crosshair AimInfo (GeometryOps.aim_from_ray) every
 ## frame and signals edit input upward; EditorController routes it to the
@@ -30,6 +31,9 @@ var _aim := {"kind": &"none"}
 @onready var _player: WalkController = get_node_or_null(player_path)
 
 var _objects_3d: Objects3D
+var _gameplay: GameplayRuntime
+var _sky_band: MeshInstance3D
+var _environment_notes: Array[String] = []
 
 
 func _ready() -> void:
@@ -38,6 +42,29 @@ func _ready() -> void:
 	add_child(_objects_3d)
 	if _player != null:
 		_objects_3d.set_player(_player)
+	# M7 gameplay runtime: triggers/registers/music during play-test.
+	_gameplay = GameplayRuntime.new()
+	_gameplay.name = "GameplayRuntime"
+	add_child(_gameplay)
+	_gameplay.set_player(_player)
+	_gameplay.set_objects_3d(_objects_3d)
+	# M6 horizon-strip sky: an open-ended fog-exempt cylinder around the
+	# player. Hidden unless the level's sky.mode is horizon_strip.
+	_sky_band = MeshInstance3D.new()
+	_sky_band.name = "SkyBand"
+	var cylinder := CylinderMesh.new()
+	cylinder.cap_top = false
+	cylinder.cap_bottom = false
+	cylinder.radial_segments = 32
+	_sky_band.mesh = cylinder
+	var sky_mat := StandardMaterial3D.new()
+	sky_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sky_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	sky_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	sky_mat.disable_fog = true
+	_sky_band.material_override = sky_mat
+	_sky_band.visible = false
+	add_child(_sky_band)
 
 
 ## set_level_data(data)
@@ -50,6 +77,8 @@ func set_level_data(data: LevelData) -> void:
 		_player.set_level_data(data)
 	if _objects_3d != null:
 		_objects_3d.set_level_data(data)
+	if _gameplay != null:
+		_gameplay.set_level_data(data)
 
 
 ## rebuild() -> Dictionary
@@ -65,6 +94,9 @@ func rebuild() -> Dictionary:
 	if _objects_3d != null:
 		_objects_3d.rebuild()
 	_apply_environment()
+	stats["environment_notes"] = _environment_notes.duplicate()
+	if _gameplay != null:
+		stats["gameplay_notes"] = _gameplay.revalidate()
 	return stats
 
 
@@ -89,17 +121,68 @@ func set_look_suppressed(suppressed: bool) -> void:
 ## the mode; the player spawns once per level binding.
 func enter_3d() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	apply_preferences()
 	if not _spawned and _player != null and _level_data != null:
 		_player.spawn(_level_data)
 		_spawned = true
+	if _gameplay != null:
+		_gameplay.start_playtest()
 
 
 func exit_3d() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if _gameplay != null:
+		_gameplay.stop_playtest()
+
+
+## get_gameplay() -> GameplayRuntime
+##
+## Read-only handle for the EditorController's signal wiring.
+func get_gameplay() -> GameplayRuntime:
+	return _gameplay
+
+
+## restart_playtest()
+##
+## Called down by the controller after a warp loads the linked level:
+## the new level's registers, triggers and music take over.
+func restart_playtest() -> void:
+	if _gameplay != null:
+		_gameplay.start_playtest()
+
+
+## spawn_player_at(entry)
+##
+## Warp arrival: entry is [x, y, z, theta_deg] in v0 units (the same
+## convention as the meta.spawn hint in WalkController.spawn).
+func spawn_player_at(entry: Array) -> void:
+	if _player == null or entry.size() < 4:
+		return
+	_player.global_position = Vector3(float(entry[0]), float(entry[2]), float(entry[1]))
+	_player.rotation.y = deg_to_rad(float(entry[3]) - 180.0)
+	_spawned = true
+
+
+## apply_preferences()
+##
+## Called down by EditorController when the preferences panel applies
+## (and on enter_3d). Walk speed / mouse sensitivity are read per-frame
+## by the WalkController; eye height needs an explicit nudge.
+func apply_preferences() -> void:
+	if _player == null:
+		return
+	var settings := get_node_or_null("/root/GameSettings")
+	if settings == null:
+		return
+	var camera := _player.get_node_or_null("Camera3D") as Camera3D
+	if camera != null:
+		camera.position.y = settings.eye_height
 
 
 func _process(_delta: float) -> void:
 	_update_aim()
+	if _sky_band != null and _sky_band.visible:
+		_follow_sky_band()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -162,30 +245,89 @@ func _update_aim() -> void:
 
 ## _apply_environment()
 ##
-## Fog (color/near/far) comes from the level's environment section; the
-## toggle is a GameSettings preference. The void renders as fog color.
+## Applies the level's validated environment (EnvironmentOps.settings):
+## fog (level fog.enabled AND the GameSettings F-toggle), ambient light,
+## background. The background color is the void color — fog color by
+## default, sky color when void.mode is sky_color; horizon_strip adds the
+## fog-exempt art band at the horizon. Notes (malformed fields that fell
+## back to defaults) are collected for the debug panel.
+##
+## Caveat: the retro pipeline is unshaded, so ambient is semantically
+## applied but has no visual effect on level meshes yet.
 func _apply_environment() -> void:
 	if _world_env == null or _world_env.environment == null:
 		return
 	var env := _world_env.environment
-	var fog := {}
-	if _level_data != null:
-		fog = _level_data.environment.get("fog", {})
-	var fog_color := Color.html(str(fog.get("color", "#202830")))
-	var enabled := true
+	var result := EnvironmentOps.settings(_level_data)
+	var values: Dictionary = result["values"]
+	_environment_notes.clear()
+	for note in result["notes"]:
+		_environment_notes.append(note)
+	var fog: Dictionary = values["fog"]
+	var sky: Dictionary = values["sky"]
+	var fog_color := Color.html(fog["color"])
+	var sky_color := Color.html(sky["color"])
+	var enabled := bool(fog["enabled"])
 	var settings := get_node_or_null("/root/GameSettings")
 	if settings != null:
-		enabled = settings.fog_enabled
+		enabled = enabled and settings.fog_enabled
 	env.fog_enabled = enabled
 	env.fog_light_color = fog_color
 	# World units are large (1 unit = 6 mm) and Godot's depth fog is
 	# exponential: 1 - exp(-density * depth). Anchor the curve to the
 	# level's near/far range: density 3/far reaches ~95% fog at far.
-	env.fog_depth_begin = float(fog.get("near", 128.0))
-	env.fog_depth_end = float(fog.get("far", 1536.0))
+	env.fog_depth_begin = fog["near"]
+	env.fog_depth_end = fog["far"]
 	env.fog_density = 3.0 / env.fog_depth_end
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color.WHITE
+	env.ambient_light_energy = values["ambient"]
+	var background := fog_color
+	if values["void"]["mode"] == "sky_color":
+		background = sky_color
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = fog_color
+	env.background_color = background
+	if sky["mode"] == "horizon_strip":
+		_update_sky_band(sky, fog)
+	elif _sky_band != null:
+		_sky_band.visible = false
+
+
+## _update_sky_band(sky, fog)
+##
+## (Re)builds the horizon strip: radius just inside fog far, height from
+## the strip texture (mildly stretched), texture repeated around the
+## circumference at 1 texel = 1 world unit.
+func _update_sky_band(sky: Dictionary, fog: Dictionary) -> void:
+	if _sky_band == null:
+		return
+	var radius := 0.8 * float(fog["far"])
+	var tex := ArtCache.resolve(str(sky["strip"]) + ".png")
+	var tex_size := Vector2(tex.get_size())
+	var cylinder := _sky_band.mesh as CylinderMesh
+	cylinder.top_radius = radius
+	cylinder.bottom_radius = radius
+	cylinder.height = maxf(64.0, tex_size.y * 4.0)
+	var mat := _sky_band.material_override as StandardMaterial3D
+	mat.albedo_texture = tex
+	var repeats := maxf(1.0, roundf(TAU * radius / maxf(1.0, tex_size.x)))
+	mat.uv1_scale = Vector3(repeats, 1.0, 1.0)
+	_sky_band.visible = true
+	_follow_sky_band()
+
+
+## _follow_sky_band()
+##
+## The band is centered on the player at eye height; yaw-locked so the
+## texture scrolls with the world (GCS-style).
+func _follow_sky_band() -> void:
+	if _sky_band == null or _player == null:
+		return
+	var eye := 140.0
+	var settings := get_node_or_null("/root/GameSettings")
+	if settings != null:
+		eye = settings.eye_height
+	_sky_band.position = Vector3(_player.global_position.x, eye, _player.global_position.z)
 
 
 func _step_height() -> float:

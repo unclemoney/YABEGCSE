@@ -1,0 +1,88 @@
+PASS: defaults validate with zero notes
+PASS: default triggers empty
+PASS: default links empty
+PASS: default music disabled
+PASS: default initial registers empty
+PASS: bad register key noted
+PASS: reserved initial register noted
+PASS: non-numeric initial value noted
+PASS: non-object names noted
+PASS: initial value clamps to 255
+PASS: non-bool music.enabled noted
+PASS: missing music track noted
+PASS: only the recoverable link survives
+PASS: bad link entry dropped, link kept
+PASS: empty link id noted
+PASS: bad link entry noted
+PASS: malformed scripts all skipped
+PASS: unknown event noted
+PASS: sector subject noted
+PASS: object subject noted
+PASS: bad timer noted
+PASS: bad once noted
+PASS: unknown verb noted
+PASS: bad set_register noted
+PASS: unknown warp link noted
+PASS: unknown run_script noted
+PASS: bad condition noted
+PASS: only the recoverable trigger survives
+PASS: dropped condition is empty
+PASS: valid custom gameplay: zero notes (got 0)
+PASS: initial register keyed by int
+PASS: music track kept
+PASS: links keyed by id
+PASS: link entry kept
+PASS: script kept
+PASS: once=false kept
+PASS: all five actions kept
+PASS: gameplay fixture loads
+PASS: raw gameplay keeps string register keys
+PASS: round-trip: re-parses
+PASS: round-trip: gameplay + unknown field survive
+PASS: round-trip: all raw triggers kept (malformed included)
+PASS: round-trip: notes never stored
+PASS: initial register applied
+PASS: health defaults to 100
+PASS: set clamps to 255
+PASS: add clamps to 0
+PASS: read-only write ignored
+PASS: register 127 nonzero = game over
+PASS: game over halts events
+PASS: damage reduces health
+PASS: death sets game-over register 1
+PASS: level_start fires
+PASS: level_start once: no refire
+PASS: failed condition does not fire
+PASS: condition met later: fires
+PASS: once: latched after firing
+PASS: wrong sector does not fire
+PASS: near_object fires on entry
+PASS: near_object: no refire while inside
+PASS: near_object re-arms after leaving
+PASS: timer not yet at period
+PASS: timer fires at period
+PASS: timer refires (once=false)
+PASS: fps written to register 122
+PASS: conditioned pad: no fire while condition false
+PASS: conditioned pad fires when condition turns true inside
+PASS: conditioned pad once: latched
+PASS: run_script flattens nested calls
+PASS: nested steps in order
+PASS: unknown script noted
+PASS: script cycle hits the depth cap
+PASS: fixture loads
+PASS: fixture yields exactly 7 notes (got 7)
+PASS: 5 of 8 fixture triggers survive
+PASS: both links kept
+PASS: fixture music enabled (track in library)
+PASS: fixture initial register 5 = 1
+PASS: fixture reserved initial 123 ignored, health default
+PASS: level_start welcome message
+PASS: bad_condition trigger recovered and fires
+PASS: second_room trigger fires (2 actions)
+PASS: register 5 set to 2
+PASS: pad chain fires: sound + remove + run_script
+PASS: pad ends in run_script
+PASS: warp_home script resolves to the warp
+PASS: pad once: no refire
+ALL TESTS PASSED

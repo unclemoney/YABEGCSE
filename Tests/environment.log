@@ -1,0 +1,36 @@
+PASS: create_empty carries sky + void blocks
+PASS: defaults validate with zero notes
+PASS: default sky/void modes
+PASS: default fog range
+PASS: malformed fog.enabled -> default
+PASS: malformed fog.color -> default
+PASS: near >= far -> both reset to defaults
+PASS: string ambient -> default
+PASS: unknown sky mode -> flat
+PASS: unknown void mode -> default
+PASS: one note per malformed field (got 6)
+PASS: empty strip -> flat fallback
+PASS: empty strip noted
+PASS: missing strip art -> flat fallback
+PASS: missing strip art noted
+PASS: valid custom environment: zero notes
+PASS: custom fog.enabled passes through
+PASS: strip mode kept when art resolves
+PASS: custom ambient passes through
+PASS: custom void mode passes through
+PASS: environment fixture loads
+PASS: malformed value stored verbatim in LevelData
+PASS: fixture yields exactly one note
+PASS: fixture strip sky survives
+PASS: round-trip: re-parses
+PASS: round-trip: environment + unknown field survive
+PASS: round-trip: notes never stored
+PASS: SKYSIDE strip art in library
+PASS: strip resolves via find_base
+PASS: GameSettings autoload present
+PASS: settings file written
+PASS: walk_speed persisted
+PASS: mouse_sensitivity persisted
+PASS: fog_enabled persisted
+PASS: settings restored after test
+ALL TESTS PASSED

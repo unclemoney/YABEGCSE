@@ -109,9 +109,9 @@ static func find_base(bare_name: String) -> String:
 	if not _base_indexed:
 		for name in scan():
 			var base := name.trim_suffix(".png")
-			var key := base.get_file().to_lower()
-			if not _base_index.has(key):
-				_base_index[key] = base
+			var base_key := base.get_file().to_lower()
+			if not _base_index.has(base_key):
+				_base_index[base_key] = base
 		_base_indexed = true
 	var key := bare_name.replace("\\", "/").get_file().get_basename().to_lower()
 	return str(_base_index.get(key, ""))
