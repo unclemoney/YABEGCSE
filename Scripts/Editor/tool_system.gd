@@ -275,13 +275,16 @@ func commit_reset_slope(sector_id: int, slope_key: StringName) -> void:
 ## is ONE undo step), update mutates + revalidates for live preview, end
 ## closes the gesture.
 func begin_corner_drag() -> void:
+	GeometryOps.slope_log("system: begin_corner_drag (undo snapshot)")
 	mutation_committed.emit()
 
 
 func update_corner_drag(sector_id: int, slope_key: StringName, point_id: int, height: float) -> void:
 	if _level_data == null:
+		GeometryOps.slope_log("system: update_corner_drag dropped — no LevelData")
 		return
 	if sector_id < 0 or sector_id >= _level_data.sectors.size():
+		GeometryOps.slope_log("system: update_corner_drag dropped — bad sector %d" % sector_id)
 		return
 	GeometryOps.set_slope_corner(_level_data.sectors[sector_id], slope_key, point_id, height)
 	GeometryOps.validate(_level_data)
@@ -289,7 +292,7 @@ func update_corner_drag(sector_id: int, slope_key: StringName, point_id: int, he
 
 
 func end_corner_drag() -> void:
-	pass
+	GeometryOps.slope_log("system: end_corner_drag")
 
 
 ## --- M4 object commits -------------------------------------------------

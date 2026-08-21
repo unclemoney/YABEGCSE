@@ -11,7 +11,7 @@ extends Node2D
 signal canvas_input(event: InputEvent, world_pos: Vector2, snapped_pos: Vector2)
 
 const MIN_GRID_SCREEN_PX := 12.0
-const ZOOM_MIN := 0.05  # low enough to frame an imported GCS level (~17k units)
+const ZOOM_MIN := 0.02  # low enough to frame a full ±10200 cm GCS import (~34k units)
 const ZOOM_MAX := 8.0
 const ZOOM_STEP := 1.25
 
@@ -67,6 +67,51 @@ func get_grid() -> float:
 
 func get_last_snapped() -> Vector2:
 	return _last_snapped
+
+
+## frame_level()
+##
+## Centers the camera on the content bounds (points + object positions)
+## and zooms to fit with a small margin. Called down by EditorController
+## whenever the level is (re)bound (open / import / new / clear):
+## imported GCS levels live thousands of units from the origin (the
+## fixture sits near (13000, 14000)), so without framing the 2D view
+## showed empty space while the 3D view spawned inside the content.
+## An empty level resets to the origin at zoom 1.
+func frame_level() -> void:
+	if _camera == null:
+		return
+	var bounds := Rect2()
+	var has_content := false
+	if _level_data != null:
+		for p in _level_data.points:
+			if p is Array and (p as Array).size() >= 2:
+				var v := Vector2(float(p[0]), float(p[1]))
+				if has_content:
+					bounds = bounds.expand(v)
+				else:
+					bounds = Rect2(v, Vector2.ZERO)
+					has_content = true
+		for o in _level_data.objects:
+			if o is Dictionary:
+				var pos := ObjectOps.get_pos(o)
+				if has_content:
+					bounds = bounds.expand(pos)
+				else:
+					bounds = Rect2(pos, Vector2.ZERO)
+					has_content = true
+	if not has_content:
+		_camera.position = Vector2.ZERO
+		_camera.zoom = Vector2.ONE
+		queue_redraw()
+		return
+	_camera.position = bounds.get_center()
+	var vp := get_viewport_rect().size
+	var fit := minf(
+		vp.x / maxf(bounds.size.x, 1.0), vp.y / maxf(bounds.size.y, 1.0)) * 0.9
+	var z: float = clampf(fit, ZOOM_MIN, 1.0)
+	_camera.zoom = Vector2(z, z)
+	queue_redraw()
 
 
 ## world_to_screen(world) -> Vector2
@@ -133,9 +178,11 @@ func _draw() -> void:
 
 ## _draw_objects()
 ##
-## M4 markers: per-type colored circle + facing tick + type initial.
-## Flagged objects paint red (tolerate + flag); the hovered object gets a
-## white ring; the ObjectTool brush ghost follows the cursor.
+## M4 markers: per-type colored circle + facing tick at the object's X/Y
+## (the same ObjectOps.get_pos data the 3D view uses — no culling, so
+## out-of-limit imports draw too). Flagged objects paint red
+## (tolerate + flag); the hovered object gets a white ring; the
+## ObjectTool brush ghost follows the cursor.
 const OBJECT_COLORS := {
 	"billboard": Color(0.4, 0.9, 0.4),
 	"wall_object": Color(0.95, 0.6, 0.2),

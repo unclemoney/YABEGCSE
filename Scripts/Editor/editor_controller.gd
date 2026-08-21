@@ -539,6 +539,9 @@ func _rebind_level_data() -> void:
 	level_data.level_changed.connect(_on_level_data_changed)
 	if _canvas_2d != null:
 		_canvas_2d.set_level_data(level_data)
+		# Frame the (possibly far-off-origin, e.g. GCS import) content so
+		# the 2D view never opens onto empty space.
+		_canvas_2d.frame_level()
 	if _viewport_3d != null:
 		_viewport_3d.set_level_data(level_data)
 	if _tool_system != null:

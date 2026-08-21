@@ -25,6 +25,7 @@ func _begin() -> void:
 	_test_aim_raycast()
 	_test_raise_lower_and_flag()
 	_test_corner_drag_sequence()
+	_test_corner_drag_interaction()
 	_test_wall_offsets()
 	_test_textures_and_missing()
 	_test_serializer_round_trip()
@@ -136,6 +137,87 @@ func _test_corner_drag_sequence() -> void:
 		_check(hi - lo > 32.0, "floor heights vary with slope (%.1f..%.1f)" % [lo, hi])
 	mesh_root.free()
 	system.queue_free()
+
+
+## _test_corner_drag_interaction()
+##
+## The interaction-layer regression: drives the Edit3DTool through
+## ToolSystem with a synthetic crosshair aim (the same path Viewport3DView
+## -> EditorController takes). The old fixed 32-unit grab range made the
+## drag unreachable from a standing camera; now the corner nearest the
+## aim point is grabbed, and nothing is written until the drag moves.
+## The first motion seeds a complete 3-corner plane (grabbed corner +
+## two farthest anchors at the flat base), so ONE drag already tilts the
+## face; later drags on other corners adjust the plane without growing
+## past 3 entries.
+func _test_corner_drag_interaction() -> void:
+	var data := LevelData.create_empty()
+	var si := GeometryOps.close_loop_from_positions(data, _square(0, 0, 512))
+	var system := ToolSystem.new()
+	root.add_child(system)
+	system.set_level_data(data)
+	system.set_mode_3d(true)
+	var aim := {
+		"kind": &"floor", "sector_id": si, "wall_id": -1,
+		"point": Vector3(256, 0, 256), "distance": 380.0,
+	}
+	# A bare click (press + release, no motion) must not pollute the slope.
+	system.handle_3d_input(_action(&"grab_corner", true), aim)
+	system.handle_3d_input(_action(&"grab_corner", false), aim)
+	_check((data.sectors[si]["floor_slope"] as Array).is_empty(),
+		"bare click on a floor leaves the slope empty")
+	# LMB drag aimed at the middle of the room: the nearest corner is
+	# ~362 units away — far beyond the old 32-unit snap.
+	system.handle_3d_input(_action(&"grab_corner", true), aim)
+	_check(system.handle_3d_motion(Vector2(0, -20), aim), "drag motion consumed")
+	system.handle_3d_input(_action(&"grab_corner", false), aim)
+	var slope: Array = data.sectors[si]["floor_slope"]
+	_check(slope.size() == 3, "one drag seeds a complete 3-corner plane (got %d)" % slope.size())
+	_check(not data.flagged_sectors.has(si), "seeded plane validates clean")
+	var raised: Array = []
+	for entry in slope:
+		if float(entry[1]) != 0.0:
+			raised.append(entry)
+	_check(raised.size() == 1, "exactly one corner raised by the drag (got %d)" % raised.size())
+	if raised.size() == 1:
+		_check(absf(float(raised[0][1]) - 40.0) < 0.01,
+			"corner raised by 20px * DRAG_SCALE = 40 (got %f)" % float(raised[0][1]))
+		var corner := GeometryOps.get_point(data, int(raised[0][0]))
+		_check(corner.distance_to(Vector2(256, 256)) > 300.0,
+			"grabbed the nearest corner (%.0f, %.0f)" % [corner.x, corner.y])
+	# A second drag aimed at another corner adjusts the plane: still
+	# exactly 3 entries (the grabbed corner joins, the nearest seeded
+	# anchor swaps out), still clean.
+	var corner_aim := aim.duplicate()
+	corner_aim["point"] = Vector3(512, 0, 0)
+	system.handle_3d_input(_action(&"grab_corner", true), corner_aim)
+	system.handle_3d_motion(Vector2(0, -30), corner_aim)
+	system.handle_3d_input(_action(&"grab_corner", false), corner_aim)
+	slope = data.sectors[si]["floor_slope"]
+	_check(slope.size() == 3, "second drag keeps the plane at 3 corners (got %d)" % slope.size())
+	_check(not data.flagged_sectors.has(si), "adjusted slope validates clean")
+	# The mesh reflects it: floor vertex heights vary across the room.
+	var mesh_root := Node3D.new()
+	SectorMeshBuilder.build_level(mesh_root, data, STEP)
+	var floor_mesh := mesh_root.get_node_or_null("FloorMesh") as MeshInstance3D
+	_check(floor_mesh != null, "interaction-sloped sector builds")
+	if floor_mesh != null:
+		var verts: PackedVector3Array = floor_mesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var lo := INF
+		var hi := -INF
+		for v in verts:
+			lo = minf(lo, v.y)
+			hi = maxf(hi, v.y)
+		_check(hi - lo > 30.0, "mesh is a tilted plane, not flat (%.1f..%.1f)" % [lo, hi])
+	mesh_root.free()
+	system.queue_free()
+
+
+func _action(action: StringName, pressed: bool) -> InputEventAction:
+	var ev := InputEventAction.new()
+	ev.action = action
+	ev.pressed = pressed
+	return ev
 
 
 func _test_wall_offsets() -> void:

@@ -40,6 +40,9 @@ PASS: synthetic: z converts cm -> units
 PASS: synthetic: red-box opvals preserved
 PASS: synthetic: alias art + theta -8192 (-45 deg) -> angle 135
 PASS: synthetic: spawn hint
+PASS: out-of-limit object imports (not dropped)
+PASS: out-of-limit position preserved in units (got 25333.333984375, 25000.0)
+PASS: out-of-limit object not hidden by a flag
 PASS: round-trip: imported level re-parses as valid v0 JSON
 PASS: round-trip: object count
 PASS: round-trip: geometry section stays empty

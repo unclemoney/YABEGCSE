@@ -85,4 +85,9 @@ PASS: pad chain fires: sound + remove + run_script
 PASS: pad ends in run_script
 PASS: warp_home script resolves to the warp
 PASS: pad once: no refire
+PASS: panel clamped to viewport - 20px margins (600x360 in 640x400)
+PASS: panel fully on-screen at (20.0, 20.0)
+PASS: header close button exists
+PASS: content wrapped in a ScrollContainer
+PASS: Escape closes the panel
 ALL TESTS PASSED

@@ -40,6 +40,7 @@ func _begin() -> void:
 	_test_object_via_input()
 	_test_clear_level()
 	_test_environment_undo()
+	_test_import_frames_content()
 	_finish()
 
 
@@ -143,6 +144,27 @@ func _test_environment_undo() -> void:
 	_ctrl_z()
 	_check(float(_controller.level_data.environment.get("ambient", 0.0)) == 1.0,
 		"undo restores environment")
+
+
+## _test_import_frames_content()
+##
+## Issue-2 regression: an imported GCS level lives thousands of units from
+## the origin (the fixture sits near (13000, 14000)); the 2D camera must
+## frame the content on import so the objects are actually visible.
+## Runs last — it leaves the imported level loaded.
+func _test_import_frames_content() -> void:
+	_controller._on_debug_import_fixture()
+	_check(_controller.level_data.objects.size() == 174,
+		"fixture import via controller (got %d)" % _controller.level_data.objects.size())
+	var camera := _view.get_node("Camera2D") as Camera2D
+	_check(camera.position.length() > 5000.0,
+		"2D camera framed onto the imported content (%.0f, %.0f)" % [camera.position.x, camera.position.y])
+	var rect := _view._visible_world_rect()
+	var all_visible := true
+	for o in _controller.level_data.objects:
+		if not rect.has_point(ObjectOps.get_pos(o)):
+			all_visible = false
+	_check(all_visible, "every imported object is inside the 2D view")
 
 
 func _click(world: Vector2) -> void:

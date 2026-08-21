@@ -21,4 +21,7 @@ PASS: clear level wipes geometry
 PASS: clear level wipes points
 PASS: commit_environment applies
 PASS: undo restores environment
+PASS: fixture import via controller (got 174)
+PASS: 2D camera framed onto the imported content (5667, 10333)
+PASS: every imported object is inside the 2D view
 ALL TESTS PASSED

@@ -22,6 +22,17 @@ PASS: 2 corners: still flagged incomplete
 PASS: 3 corners: slope valid
 PASS: sloped sector still builds (not skipped)
 PASS: floor heights vary with slope (0.0..96.0)
+PASS: bare click on a floor leaves the slope empty
+PASS: drag motion consumed
+PASS: one drag seeds a complete 3-corner plane (got 3)
+PASS: seeded plane validates clean
+PASS: exactly one corner raised by the drag (got 1)
+PASS: corner raised by 20px * DRAG_SCALE = 40 (got 40.000000)
+PASS: grabbed the nearest corner (0, 0)
+PASS: second drag keeps the plane at 3 corners (got 3)
+PASS: adjusted slope validates clean
+PASS: interaction-sloped sector builds
+PASS: mesh is a tilted plane, not flat (-20.0..60.0)
 PASS: offset_u applied
 PASS: offset_v applied
 PASS: wall UV u includes offset (0.250000)

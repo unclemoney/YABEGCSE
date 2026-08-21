@@ -29,6 +29,7 @@ func _begin() -> void:
 	_test_engine_triggers()
 	_test_engine_scripts()
 	_test_fixture_chain()
+	await _test_panel_fits_and_closes()
 	_finish()
 
 
@@ -304,6 +305,45 @@ func _has_note(notes: Array, substr: String) -> bool:
 		if str(note).contains(substr):
 			return true
 	return false
+
+
+## _test_panel_fits_and_closes()
+##
+## Issue-3 regression: the GameplayPanel must fit the 640x400 internal
+## viewport with a 20 px margin on all sides even when stuffed with rows
+## (the content scrolls; the frame must not grow), must keep a reachable
+## close button in its fixed header, and must close on Escape.
+func _test_panel_fits_and_closes() -> void:
+	root.size = Vector2i(640, 400)  # the real internal viewport (headless defaults to square)
+	await process_frame
+	var panel := GameplayPanel.new()
+	root.add_child(panel)
+	panel.set_anchors_preset(Control.PRESET_FULL_RECT, true)
+	var gameplay := {"registers": {"initial": {}, "names": {}}, "links": []}
+	for i in range(1, 13):
+		(gameplay["registers"]["initial"] as Dictionary)[str(i)] = i
+	for i in range(6):
+		(gameplay["links"] as Array).append({"id": "l%d" % i, "file": "l%d.json" % i, "entry": [0, 0, 0, 0]})
+	panel.open_with(gameplay)
+	await create_timer(0.5).timeout  # let the intro tween settle
+	var vp: Vector2 = panel.get_viewport_rect().size
+	var rect := (panel.get_node("Panel") as PanelContainer).get_global_rect()
+	_check(rect.size.x <= vp.x - 39.5 and rect.size.y <= vp.y - 39.5,
+		"panel clamped to viewport - 20px margins (%.0fx%.0f in %.0fx%.0f)" % [
+			rect.size.x, rect.size.y, vp.x, vp.y])
+	_check(rect.position.x >= 19.5 and rect.position.y >= 19.5,
+		"panel fully on-screen at (%.1f, %.1f)" % [rect.position.x, rect.position.y])
+	_check(panel.get_node("Panel").find_child("CloseButton", true, false) != null,
+		"header close button exists")
+	_check(panel.get_node("Panel").find_child("Scroll", true, false) is ScrollContainer,
+		"content wrapped in a ScrollContainer")
+	var ev := InputEventKey.new()
+	ev.keycode = KEY_ESCAPE
+	ev.pressed = true
+	panel._unhandled_input(ev)
+	await create_timer(0.4).timeout  # exit tween, then hidden
+	_check(not panel.visible, "Escape closes the panel")
+	panel.queue_free()
 
 
 func _check(condition: bool, label: String) -> void:

@@ -26,6 +26,7 @@ func _begin() -> void:
 	_test_find_base()
 	var result := _test_real_fixture()
 	_test_synthetic_pair()
+	_test_out_of_bounds_object()
 	_test_round_trip(result["level"])
 	_test_collision(result["level"])
 	_finish()
@@ -147,6 +148,25 @@ func _test_synthetic_pair() -> void:
 		"synthetic: alias art + theta -8192 (-45 deg) -> angle 135")
 	var spawn: Array = level.meta["spawn"]
 	_check(_approx(spawn[0], 100.0 * CM) and _approx(spawn[1], 200.0 * CM), "synthetic: spawn hint")
+
+
+## _test_out_of_bounds_object()
+##
+## Objects past the ±10200 cm GCS world limit are kept — imported with
+## their exact position, never dropped or clamped — so they still render
+## on the 2D map (the 2D canvas draws the full object list uncapped).
+func _test_out_of_bounds_object() -> void:
+	var objdef := "0 200 WALLA.VGR 400 400\n"
+	var univ := "0 200 15000 15000 0 16384 0 0 0 0 0\n"
+	var result := GCSImporter.import_level(univ, objdef, "out-of-limit", [])
+	var level: LevelData = result["level"]
+	_check(level.objects.size() == 1, "out-of-limit object imports (not dropped)")
+	if level.objects.size() == 1:
+		var o: Dictionary = level.objects[0]
+		# theta 16384 = 90 deg: run (1, 0), so the centre shifts +200 cm in x.
+		_check(_approx(float(o["pos"][0]), 15200.0 * CM) and _approx(float(o["pos"][1]), 15000.0 * CM),
+			"out-of-limit position preserved in units (got %s, %s)" % [str(o["pos"][0]), str(o["pos"][1])])
+		_check(not level.flagged_objects.has(0), "out-of-limit object not hidden by a flag")
 
 
 func _test_round_trip(level: LevelData) -> void:

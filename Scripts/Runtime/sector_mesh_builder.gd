@@ -92,6 +92,21 @@ static func _build_sector(data: LevelData, si: int, floors: Dictionary, ceilings
 	var outer := GeometryOps.loop_to_polygon(data, sector["walls"])
 	if outer.size() < 3:
 		return false
+	# Slope debug: report what the mesh build actually sees for this sector.
+	for key in [&"floor_slope", &"ceiling_slope"]:
+		var slope: Array = sector.get(key, [])
+		if not slope.is_empty():
+			var height_at := GeometryOps.floor_height_at if key == &"floor_slope" else GeometryOps.ceiling_height_at
+			GeometryOps.slope_log(
+				(
+					"mesh: sector %d %s entries=%s — heights: first vertex %.1f, mid vertex %.1f"
+					% [
+						si, key, str(slope),
+						height_at.call(data, si, outer[0]),
+						height_at.call(data, si, outer[outer.size() / 2]),
+					]
+				)
+			)
 	var holes: Array = []
 	for loop in sector["inner"]:
 		var hole := GeometryOps.loop_to_polygon(data, loop)

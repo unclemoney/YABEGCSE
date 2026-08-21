@@ -10,6 +10,19 @@ const EPS := 0.001  # geometric epsilon, world units
 const EPS_T := 0.001  # segment parameter epsilon
 const MIN_OVERLAP_AREA := 1.0  # square units; touching edges are not overlap
 
+# TODO: flip to false once the live slope-drag failure is pinned down.
+static var debug_slopes := true
+
+
+## slope_log(text)
+##
+## One switch for the whole slope pipeline's debug output (view input ->
+## tool drag -> LevelData write -> validate -> mesh build). Prints to the
+## editor Output panel and headless stdout with a [slope] prefix.
+static func slope_log(text: String) -> void:
+	if debug_slopes:
+		print("[slope] " + text)
+
 
 ## snap(v, grid) -> Vector2
 ##
@@ -321,8 +334,12 @@ static func validate(data: LevelData) -> void:
 			var corners := _slope_corners(data, sector, key)
 			if slope.size() != 3 or corners.size() != 3:
 				_flag_sector(data, si, "%s: incomplete slope (%d/3 corners)" % [key, corners.size()])
+				slope_log("validate: sector %d %s flagged incomplete (entries=%d, resolved=%d/3): %s" % [
+					si, key, slope.size(), corners.size(), str(slope),
+				])
 			elif not _corners_form_plane(corners):
 				_flag_sector(data, si, "%s: collinear slope corners" % key)
+				slope_log("validate: sector %d %s flagged collinear: %s" % [si, key, str(slope)])
 		var floor_y := float(sector.get("floor_height", 0.0))
 		var ceil_y := float(sector.get("ceiling_height", 256.0))
 		if floor_y >= ceil_y:
@@ -500,9 +517,31 @@ static func set_slope_corner(sector: Dictionary, slope_key: StringName, point_id
 	for entry in slope:
 		if int(entry[0]) == point_id:
 			entry[1] = height
+			slope_log("set_slope_corner: %s point %d -> %.1f (replaced; %d entries)" % [
+				slope_key, point_id, height, slope.size(),
+			])
 			return
 	slope.append([point_id, height])
 	sector[slope_key] = slope
+	slope_log("set_slope_corner: %s point %d -> %.1f (added; %d entries)" % [
+		slope_key, point_id, height, slope.size(),
+	])
+
+
+## remove_slope_corner(sector, slope_key, point_id)
+##
+## Deletes one corner entry from a slope array. Pure dict surgery —
+## callers own commit/validate.
+static func remove_slope_corner(sector: Dictionary, slope_key: StringName, point_id: int) -> void:
+	var slope: Array = sector.get(slope_key, [])
+	for i in range(slope.size()):
+		if int(slope[i][0]) == point_id:
+			slope.remove_at(i)
+			sector[slope_key] = slope
+			slope_log("remove_slope_corner: %s point %d removed (%d entries)" % [
+				slope_key, point_id, slope.size(),
+			])
+			return
 
 
 ## _slope_corners(data, sector, slope_key) -> Array[Vector3]

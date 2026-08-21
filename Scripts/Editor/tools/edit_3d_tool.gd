@@ -7,22 +7,24 @@ extends RefCounted
 ## computes the AimInfo (GeometryOps.aim_from_ray) and ToolSystem routes
 ## events here. Wheel = raise/lower the aimed face (Shift = opposite face)
 ## or shift wall offsets when a wall is aimed; LMB drag = corner-drag
-## slope editing (three corner heights define the plane); X clears the
-## aimed face's slope; T requests the texture picker.
+## slope editing (grab the sector corner nearest the crosshair hit and
+## drag vertically; the first motion seeds a valid 3-corner plane from the
+## flat face, so one drag already tilts it); X clears the aimed face's
+## slope; T requests the texture picker.
 ##
 ## All LevelData writes go through ToolSystem commit methods; the tool
-## holds only transient drag state.
+## holds only transient drag state. A corner drag writes nothing until the
+## first drag motion, so a bare LMB click never pollutes the slope data.
 
 signal finished
 signal cancelled
 
 const HEIGHT_STEP := 8.0  # 48 mm per wheel tick
 const OFFSET_STEP := 8.0  # texels per wheel tick
-const CORNER_SNAP := 32.0  # world units; grab range for corner drags
 const DRAG_SCALE := 2.0  # world units of height per pixel of mouse-Y
 
 var _system: ToolSystem
-var _drag := {}  # empty = not dragging; else {sector_id, slope_key, point_id, height}
+var _drag := {}  # empty = not dragging; else {sector_id, slope_key, point_id, height, committed}
 var _obj_drag := {}  # empty = not dragging; else {object_id}
 
 
@@ -77,6 +79,8 @@ func handle_input(event: InputEvent, aim: Dictionary) -> bool:
 		elif kind == &"object":
 			_system.begin_object_drag()
 			_obj_drag = {"object_id": int(aim["object_id"])}
+		else:
+			GeometryOps.slope_log("tool: grab_corner pressed but aim kind is '%s' (nothing grabbed)" % kind)
 		return true
 	if event.is_action_released("grab_corner"):
 		_end_drag()
@@ -95,8 +99,8 @@ func handle_input(event: InputEvent, aim: Dictionary) -> bool:
 ## handle_motion(relative, aim) -> bool
 ##
 ## Mouse motion during a drag adjusts the corner height or object position
-## live (preview commits without undo pushes; the snapshot was taken at
-## drag start).
+## live. The first motion of a corner drag takes the undo snapshot and
+## performs the initial write (preview commits afterwards don't push undo).
 func handle_motion(relative: Vector2, aim: Dictionary) -> bool:
 	if not _obj_drag.is_empty():
 		var ground: Variant = aim.get("ground_point", null)
@@ -105,7 +109,19 @@ func handle_motion(relative: Vector2, aim: Dictionary) -> bool:
 		return true
 	if _drag.is_empty():
 		return false
+	if not bool(_drag.get("committed", false)):
+		_drag["committed"] = true
+		_system.begin_corner_drag()
+		GeometryOps.slope_log("tool: first drag motion — committing sector %d %s point %d" % [
+			int(_drag["sector_id"]), _drag["slope_key"], int(_drag["point_id"]),
+		])
+		_seed_slope_plane()
 	_drag["height"] = float(_drag["height"]) - relative.y * DRAG_SCALE
+	_drag["motions"] = int(_drag.get("motions", 0)) + 1
+	if int(_drag["motions"]) % 20 == 1:
+		GeometryOps.slope_log("tool: drag motion #%d rel=%s height=%.1f" % [
+			int(_drag["motions"]), str(relative), float(_drag["height"]),
+		])
 	_system.update_corner_drag(
 		int(_drag["sector_id"]), _drag["slope_key"], int(_drag["point_id"]), float(_drag["height"])
 	)
@@ -144,7 +160,7 @@ func describe_aim(aim: Dictionary) -> String:
 	var height_key := &"floor_height" if kind == &"floor" else &"ceiling_height"
 	var slope: Array = sector.get(_slope_key(kind), [])
 	var tex := str(sector.get(&"floor_texture" if kind == &"floor" else &"ceiling_texture", ""))
-	return "sector %d %s  h=%.1f  slope %d/3  tex=%s" % [
+	return "sector %d %s  h=%.1f  slope %d/3  tex=%s  [LMB-drag: slope corner | X: clear]" % [
 		sector_id, kind, float(sector.get(height_key, 0.0)), slope.size(), tex,
 	]
 
@@ -179,31 +195,158 @@ func _on_wheel(up: bool, event: InputEventMouseButton, aim: Dictionary) -> void:
 
 ## _begin_drag(aim)
 ##
-## Grabs the nearest outer-loop corner of the aimed sector. The height
-## starts at the face's current height at that corner so the drag is
-## continuous from what the player sees.
+## Grabs the outer-loop corner of the aimed sector nearest to the
+## crosshair hit point. No tolerance cap: the old fixed 32-unit grab range
+## was unreachable from a standing camera (the crosshair lands tens to
+## hundreds of units from any corner), which made slopes uneditable.
+## Nothing is written yet — the undo snapshot and the first
+## set_slope_corner happen on the first drag motion (handle_motion), so a
+## plain click on a floor/ceiling leaves the slope data untouched.
+## The drag height starts at the face's current height at the grabbed
+## corner, so the plane moves continuously from what the player sees.
 func _begin_drag(aim: Dictionary) -> void:
 	var data: LevelData = _system.get_level_data()
 	if data == null:
+		GeometryOps.slope_log("tool: _begin_drag aborted — no LevelData")
 		return
 	var sector_id := int(aim["sector_id"])
 	var p: Vector3 = aim["point"]
-	var pid := GeometryOps.nearest_corner(data, sector_id, Vector2(p.x, p.z), CORNER_SNAP)
+	var pid := GeometryOps.nearest_corner(data, sector_id, Vector2(p.x, p.z), INF)
 	if pid == -1:
+		GeometryOps.slope_log("tool: _begin_drag aborted — no corner found in sector %d near %s" % [
+			sector_id, str(Vector2(p.x, p.z)),
+		])
 		return
-	var slope_key := _slope_key(aim["kind"])
+	var corner := GeometryOps.get_point(data, pid)
 	var height := 0.0
 	if aim["kind"] == &"floor":
-		height = GeometryOps.floor_height_at(data, sector_id, Vector2(p.x, p.z))
+		height = GeometryOps.floor_height_at(data, sector_id, corner)
 	else:
-		height = GeometryOps.ceiling_height_at(data, sector_id, Vector2(p.x, p.z))
-	_system.begin_corner_drag()
-	_drag = {"sector_id": sector_id, "slope_key": slope_key, "point_id": pid, "height": height}
-	_system.update_corner_drag(sector_id, slope_key, pid, height)
+		height = GeometryOps.ceiling_height_at(data, sector_id, corner)
+	_drag = {
+		"sector_id": sector_id,
+		"slope_key": _slope_key(aim["kind"]),
+		"point_id": pid,
+		"height": height,
+		"committed": false,
+	}
+	GeometryOps.slope_log("tool: grabbed sector %d %s corner point %d at %s, start height %.1f" % [
+		sector_id, aim["kind"], pid, str(corner), height,
+	])
 
 
 func _end_drag() -> void:
 	if _drag.is_empty():
 		return
+	var committed := bool(_drag.get("committed", false))
+	var sector_id := int(_drag["sector_id"])
+	var slope_key: StringName = _drag["slope_key"]
 	_drag = {}
-	_system.end_corner_drag()
+	if committed:
+		_system.end_corner_drag()
+	var data: LevelData = _system.get_level_data()
+	var final: Variant = []
+	if data != null and sector_id >= 0 and sector_id < data.sectors.size():
+		final = data.sectors[sector_id].get(slope_key, [])
+	GeometryOps.slope_log("tool: drag end (committed=%s) sector %d %s = %s" % [
+		str(committed), sector_id, slope_key, str(final),
+	])
+
+
+## _seed_slope_plane()
+##
+## A slope plane needs exactly 3 corner heights; a bare drag writes only
+## the grabbed corner, which validate() flags incomplete and the mesh
+## builder degrades to flat — the drag looked dead (the "slopes don't
+## work" bug). On the first drag motion, the plane is topped up to 3
+## corners: existing entries keep their heights, the farthest
+## non-collinear outer-loop corners are seeded at the face's flat height,
+## and the drag's own grabbed-corner write completes the set. A complete
+## plane that doesn't contain the grabbed corner swaps its nearest entry
+## for the grab point rather than growing a flagged 4th entry.
+func _seed_slope_plane() -> void:
+	var data: LevelData = _system.get_level_data()
+	if data == null:
+		return
+	var sector_id := int(_drag["sector_id"])
+	var slope_key: StringName = _drag["slope_key"]
+	var sector: Dictionary = data.sectors[sector_id]
+	var slope: Array = sector.get(slope_key, [])
+	var grabbed := int(_drag["point_id"])
+	var members := {}
+	for entry in slope:
+		members[int(entry[0])] = true
+	if slope.size() >= 3:
+		if slope.size() == 3 and not members.has(grabbed):
+			_remove_nearest_slope_entry(data, sector, slope_key, grabbed)
+		return
+	var need := 3 - slope.size() - (0 if members.has(grabbed) else 1)
+	if need <= 0:
+		return
+	# The slope is incomplete here, so the face still evaluates flat.
+	var height_key := &"floor_height" if slope_key == &"floor_slope" else &"ceiling_height"
+	var base := float(sector.get(height_key, 0.0))
+	# Outer-loop corner ids, farthest from the grabbed corner first.
+	var corner_pos := GeometryOps.get_point(data, grabbed)
+	var unique := {}
+	for wid in sector["walls"]:
+		var w: Dictionary = data.walls[wid]
+		unique[int(w["a"])] = true
+		unique[int(w["b"])] = true
+	var cids := unique.keys()
+	cids.sort_custom(
+		func(a: int, b: int) -> bool:
+			return (
+				GeometryOps.get_point(data, a).distance_squared_to(corner_pos)
+				> GeometryOps.get_point(data, b).distance_squared_to(corner_pos)
+			)
+	)
+	# Grabbed corner counts toward the plane even before its own write.
+	var chosen: Array = [grabbed]
+	for pid in cids:
+		if need == 0:
+			break
+		if members.has(pid) or pid == grabbed:
+			continue
+		var prospective: Array = []
+		for entry in slope:
+			prospective.append(int(entry[0]))
+		prospective.append_array(chosen)
+		prospective.append(pid)
+		if prospective.size() == 3 and _collinear(data, prospective):
+			continue
+		chosen.append(pid)
+		need -= 1
+		GeometryOps.slope_log("tool: seeding corner point %d at flat height %.1f" % [pid, base])
+		_system.update_corner_drag(sector_id, slope_key, pid, base)
+
+
+## _remove_nearest_slope_entry(data, sector, slope_key, grabbed)
+##
+## Drops the slope entry whose corner sits nearest the grabbed one, so
+## the drag's write re-completes the plane at 3 entries.
+func _remove_nearest_slope_entry(
+	data: LevelData, sector: Dictionary, slope_key: StringName, grabbed: int
+) -> void:
+	var corner_pos := GeometryOps.get_point(data, grabbed)
+	var best := -1
+	var best_dist := INF
+	for entry in sector.get(slope_key, []):
+		var pid := int(entry[0])
+		var dist := GeometryOps.get_point(data, pid).distance_squared_to(corner_pos)
+		if dist < best_dist:
+			best_dist = dist
+			best = pid
+	if best != -1:
+		GeometryOps.slope_log("tool: swapping slope entry point %d for grabbed point %d" % [best, grabbed])
+		GeometryOps.remove_slope_corner(sector, slope_key, best)
+
+
+## _collinear(data, pids) -> bool
+##
+## True when three point ids sit on one map line (no usable slope plane).
+func _collinear(data: LevelData, pids: Array) -> bool:
+	var a := GeometryOps.get_point(data, int(pids[0]))
+	var b := GeometryOps.get_point(data, int(pids[1]))
+	var c := GeometryOps.get_point(data, int(pids[2]))
+	return absf((b - a).cross(c - a)) < GeometryOps.EPS

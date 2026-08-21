@@ -204,6 +204,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	# M3 edit input: wheel, grab/release, T, X. The controller decides
 	# whether the tool consumes it.
+	if event.is_action_pressed("grab_corner") or event.is_action_released("grab_corner"):
+		GeometryOps.slope_log("view: grab_corner %s — aim kind='%s' sector=%s hit=%s" % [
+			"pressed" if event.is_action_pressed("grab_corner") else "released",
+			_aim.get("kind", &"none"), str(_aim.get("sector_id", "-")),
+			str(_aim.get("point", "-")),
+		])
 	edit_input.emit(event, _aim)
 
 
