@@ -9,6 +9,9 @@ extends Node2D
 ## through EditorController down to ToolSystem — never from here.
 
 signal canvas_input(event: InputEvent, world_pos: Vector2, snapped_pos: Vector2)
+## The WASD-driven player marker moved (2D mode). Angle is the 2D facing:
+## radians, 0 = +X (east), positive toward +Y (south on the canvas).
+signal player_moved_2d(position: Vector2, angle: float)
 
 const MIN_GRID_SCREEN_PX := 12.0
 const ZOOM_MIN := 0.02  # low enough to frame a full ±10200 cm GCS import (~34k units)
@@ -22,8 +25,37 @@ var _preview: Dictionary = {}
 var _panning := false
 var _last_world := Vector2.ZERO
 var _last_snapped := Vector2.ZERO
+var _marker_pos := Vector2.ZERO
+var _marker_angle := 0.0
+var _marker_set := false
+var _tool_layer: CanvasLayer
+var _tool_label: Label
 
 @onready var _camera: Camera2D = get_node_or_null(camera_path)
+
+
+## _ready()
+##
+## Side-effects: builds the screen-pinned tool-mode label (top-left, 8 px
+## margin, semi-transparent black background). A CanvasLayer keeps it
+## fixed on screen over any geometry; UIPanels draws above it (later in
+## tree order at the same layer).
+func _ready() -> void:
+	_tool_layer = CanvasLayer.new()
+	_tool_layer.name = "ToolModeLayer"
+	add_child(_tool_layer)
+	_tool_label = Label.new()
+	_tool_label.position = Vector2(8, 8)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.0, 0.0, 0.0, 0.55)
+	style.set_content_margin_all(4.0)
+	_tool_label.add_theme_stylebox_override("normal", style)
+	_tool_label.text = "MODE: SECTOR DRAW"
+	_tool_layer.add_child(_tool_label)
+	# CanvasLayer visibility does not follow the parent Node2D; sync it.
+	visibility_changed.connect(
+		func() -> void: _tool_layer.visible = visible
+	)
 
 
 ## set_level_data(data)
@@ -63,6 +95,62 @@ func get_grid() -> float:
 		if float(g) * zoom >= MIN_GRID_SCREEN_PX:
 			return float(g)
 	return float(sizes[sizes.size() - 1])
+
+
+## set_tool_mode(text)
+##
+## Called down by EditorController every frame with the ToolSystem's
+## current mode name. Instant switches: the label just follows.
+func set_tool_mode(text: String) -> void:
+	if _tool_label != null and _tool_label.text != text:
+		_tool_label.text = text
+
+
+## update_player_marker(pos, angle)
+##
+## Called down by EditorController with the player's 2D map position and
+## facing angle (radians, 0 = +X/east, positive toward +Y/south). The
+## marker renders on top of sector geometry, below the UI panels.
+func update_player_marker(pos: Vector2, angle: float) -> void:
+	_marker_pos = pos
+	_marker_angle = angle
+	_marker_set = true
+	queue_redraw()
+
+
+func has_player_marker() -> bool:
+	return _marker_set
+
+
+func get_zoom() -> float:
+	if _camera == null:
+		return 1.0
+	return _camera.zoom.x
+
+
+## _process(delta)
+##
+## 2D-mode WASD: moves the player position marker (facing follows the
+## movement direction) and signals upward so EditorController can mirror
+## the move into the 3D view. Only runs while visible (the controller
+## disables this node's processing in 3D mode).
+func _process(delta: float) -> void:
+	if not visible or _camera == null:
+		return
+	var dir := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	if dir == Vector2.ZERO:
+		return
+	if not _marker_set:
+		_marker_pos = _camera.get_screen_center_position()
+		_marker_set = true
+	var speed := 500.0
+	var settings := get_node_or_null("/root/GameSettings")
+	if settings != null:
+		speed = settings.walk_speed
+	_marker_pos += dir * speed * delta
+	_marker_angle = dir.angle()
+	player_moved_2d.emit(_marker_pos, _marker_angle)
+	queue_redraw()
 
 
 func get_last_snapped() -> Vector2:
@@ -127,6 +215,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
+		if mb.pressed:
+			# Canvas clicks drop stale Control focus so Tab reaches the
+			# tool cycle instead of moving UI focus.
+			get_viewport().gui_release_focus()
 		if mb.button_index == MOUSE_BUTTON_MIDDLE:
 			_panning = mb.pressed
 			get_viewport().set_input_as_handled()
@@ -174,6 +266,83 @@ func _draw() -> void:
 		_draw_walls()
 		_draw_objects()
 	_draw_preview()
+	_draw_tool_overlay()
+	_draw_player_marker()
+
+
+## _draw_tool_overlay()
+##
+## Tool-mode rendering driven by the active tool's preview dict: vertex
+## handles in Vertex mode (4 px squares at every wall endpoint; the
+## selected vertex is larger and orange, the hovered one yellow), wall
+## hover/selection highlights in Wall mode, and the red 0.3 s rejection
+## flash both modes share. All screen-constant sizes divide by zoom.
+func _draw_tool_overlay() -> void:
+	var flash: Array = _preview.get("flash_walls", [])
+	for wi in flash:
+		_highlight_wall(int(wi), Color(1.0, 0.2, 0.2), 5.0)
+	var mode: StringName = _preview.get("tool_mode", &"draw")
+	if mode == &"vertex":
+		_draw_vertex_handles()
+	elif mode == &"wall":
+		var hover := int(_preview.get("wall_hover", -1))
+		var selected := int(_preview.get("wall_selected", -1))
+		if hover != -1 and hover != selected:
+			_highlight_wall(hover, Color(1.0, 0.95, 0.4), 4.0)
+		if selected != -1:
+			_highlight_wall(selected, Color(1.0, 0.6, 0.15), 4.0)
+
+
+func _highlight_wall(wall_id: int, color: Color, width: float) -> void:
+	if _level_data == null or wall_id < 0 or wall_id >= _level_data.walls.size():
+		return
+	var w: Dictionary = _level_data.walls[wall_id]
+	var n := _level_data.points.size()
+	if w["a"] < 0 or w["a"] >= n or w["b"] < 0 or w["b"] >= n:
+		return
+	draw_line(GeometryOps.get_point(_level_data, w["a"]),
+		GeometryOps.get_point(_level_data, w["b"]), color, width)
+
+
+func _draw_vertex_handles() -> void:
+	if _level_data == null:
+		return
+	var px := 4.0 / _camera.zoom.x
+	var hover := int(_preview.get("vertex_hover", -1))
+	var selected := int(_preview.get("vertex_selected", -1))
+	var drawn := {}
+	for w in _level_data.walls:
+		for pid in [w["a"], w["b"]]:
+			var point_id := int(pid)
+			if point_id < 0 or point_id >= _level_data.points.size() or drawn.has(point_id):
+				continue
+			drawn[point_id] = true
+			var size := px
+			var color := Color(0.85, 0.85, 0.9)
+			if point_id == hover:
+				size = px * 1.75
+				color = Color(1.0, 0.9, 0.3)
+			if point_id == selected:
+				size = px * 2.0
+				color = Color(1.0, 0.55, 0.1)
+			var center := GeometryOps.get_point(_level_data, point_id)
+			draw_rect(Rect2(center - Vector2(size, size) * 0.5, Vector2(size, size)), color)
+
+
+## _draw_player_marker()
+##
+## The player position marker: a 12 px radius triangle, bright green,
+## rotated to the facing angle. Drawn after everything else on this
+## canvas (on top of sector geometry); UIPanels is a CanvasLayer above.
+func _draw_player_marker() -> void:
+	if not _marker_set:
+		return
+	var r := 12.0 / _camera.zoom.x
+	var color := Color(0.2, 1.0, 0.45)
+	var tip := _marker_pos + Vector2(r, 0.0).rotated(_marker_angle)
+	var back_left := _marker_pos + Vector2(r, 0.0).rotated(_marker_angle + deg_to_rad(140.0))
+	var back_right := _marker_pos + Vector2(r, 0.0).rotated(_marker_angle - deg_to_rad(140.0))
+	draw_colored_polygon(PackedVector2Array([tip, back_left, back_right]), color)
 
 
 ## _draw_objects()

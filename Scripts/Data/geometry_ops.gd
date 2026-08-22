@@ -680,6 +680,173 @@ static func nearest_corner(data: LevelData, sector_id: int, pos: Vector2, tolera
 	return best
 
 
+## nearest_point(data, v, tolerance) -> int
+##
+## Closest point-table entry within tolerance, or -1. The vertex edit
+## tool's pick radius (8 px, zoom-scaled by the caller).
+static func nearest_point(data: LevelData, v: Vector2, tolerance: float) -> int:
+	var best := -1
+	var best_dist := tolerance
+	for i in range(data.points.size()):
+		var dist := get_point(data, i).distance_to(v)
+		if dist < best_dist:
+			best_dist = dist
+			best = i
+	return best
+
+
+## move_point(data, point_id, new_pos)
+##
+## Vertex edit drag: repositions one point-table entry. Connected walls
+## follow automatically (walls reference point ids). Pure data surgery —
+## callers own snapshot/validate/notify.
+static func move_point(data: LevelData, point_id: int, new_pos: Vector2) -> void:
+	if point_id < 0 or point_id >= data.points.size():
+		return
+	data.points[point_id] = [new_pos.x, new_pos.y]
+
+
+## move_causes_crossing(data, point_id, new_pos) -> bool
+##
+## Vertex edit validity: true when moving point_id to new_pos would make
+## any wall connected to it strictly cross another wall (touching at
+## shared endpoints is not a crossing — that is how loops join). A move
+## collapsing a wall to zero length counts as invalid too.
+static func move_causes_crossing(data: LevelData, point_id: int, new_pos: Vector2) -> bool:
+	if point_id < 0 or point_id >= data.points.size():
+		return true
+	for wi in range(data.walls.size()):
+		var w: Dictionary = data.walls[wi]
+		if w["a"] != point_id and w["b"] != point_id:
+			continue
+		if not _valid_wall(data, w):
+			continue
+		var other_id: int = w["b"] if w["a"] == point_id else w["a"]
+		var b1 := get_point(data, other_id)
+		if new_pos.distance_to(b1) < EPS:
+			return true
+		for wj in range(data.walls.size()):
+			if wj == wi:
+				continue
+			var w2: Dictionary = data.walls[wj]
+			if w2["a"] == point_id or w2["b"] == point_id:
+				continue  # shares the moved vertex
+			if not _valid_wall(data, w2):
+				continue
+			if _segments_cross_strict(new_pos, b1, get_point(data, w2["a"]), get_point(data, w2["b"])):
+				return true
+	return false
+
+
+## check_portal_merge(data, wall_id) -> Dictionary
+##
+## Wall-select tool's merge gate. Pure: computes the full merge plan for
+## a portal wall without mutating anything. Returns {"ok", "reason",
+## "merged_walls", "survivor", "removed"}. Rejects boundary walls,
+## multi-wall portals, sectors with inner loops, and merged loops that
+## would be self-intersecting, degenerate or non-closed. The survivor is
+## the larger-area sector (heights/textures inherit from it).
+static func check_portal_merge(data: LevelData, wall_id: int) -> Dictionary:
+	if wall_id < 0 or wall_id >= data.walls.size():
+		return _merge_fail("wall index out of range")
+	var w: Dictionary = data.walls[wall_id]
+	if not _valid_wall(data, w):
+		return _merge_fail("invalid wall")
+	if w["back"] == -1:
+		return _merge_fail("boundary wall")
+	var s1: int = w["front"]
+	var s2: int = w["back"]
+	if s1 == s2 or s1 < 0 or s1 >= data.sectors.size() or s2 < 0 or s2 >= data.sectors.size():
+		return _merge_fail("invalid sector sides")
+	if not (data.sectors[s1]["inner"] as Array).is_empty():
+		return _merge_fail("sector %d has inner loops" % s1)
+	if not (data.sectors[s2]["inner"] as Array).is_empty():
+		return _merge_fail("sector %d has inner loops" % s2)
+	var shared := 0
+	for w2 in data.walls:
+		if (w2["front"] == s1 and w2["back"] == s2) or (w2["front"] == s2 and w2["back"] == s1):
+			shared += 1
+	if shared != 1:
+		return _merge_fail("sectors share %d portal walls" % shared)
+	var ring1 := _loop_point_ids(data, data.sectors[s1]["walls"])
+	var ring2 := _loop_point_ids(data, data.sectors[s2]["walls"])
+	if ring1.size() < 3 or ring2.size() < 3:
+		return _merge_fail("unclosed loop")
+	var merged_ring := _stitch_rings(ring1, ring2, w["a"], w["b"])
+	if merged_ring.size() < 3:
+		return _merge_fail("could not stitch loops")
+	var merged_walls: Array[int] = []
+	var seen := {}
+	for i in range(merged_ring.size()):
+		var a: int = merged_ring[i]
+		var b: int = merged_ring[(i + 1) % merged_ring.size()]
+		var wid := find_wall_between(data, a, b)
+		if wid == -1 or wid == wall_id or seen.has(wid):
+			return _merge_fail("non-closed stitched loop")
+		seen[wid] = true
+		merged_walls.append(wid)
+	var poly := PackedVector2Array()
+	for pid in merged_ring:
+		poly.append(get_point(data, pid))
+	if absf(polygon_area(poly)) < EPS:
+		return _merge_fail("degenerate merged loop")
+	for i in range(poly.size()):
+		for j in range(i + 1, poly.size()):
+			if j == i + 1 or (i == 0 and j == poly.size() - 1):
+				continue  # adjacent edges share a vertex by construction
+			if _segments_cross_strict(
+				poly[i], poly[(i + 1) % poly.size()],
+				poly[j], poly[(j + 1) % poly.size()]):
+				return _merge_fail("self-intersecting merged loop")
+	var area1 := absf(polygon_area(loop_to_polygon(data, data.sectors[s1]["walls"])))
+	var area2 := absf(polygon_area(loop_to_polygon(data, data.sectors[s2]["walls"])))
+	var survivor := s1
+	var removed := s2
+	if area2 > area1:
+		survivor = s2
+		removed = s1
+	return {
+		"ok": true,
+		"reason": "",
+		"merged_walls": merged_walls,
+		"survivor": survivor,
+		"removed": removed,
+	}
+
+
+## merge_sectors_at_portal(data, wall_id) -> Dictionary
+##
+## Applies the check_portal_merge plan: the survivor keeps its loop
+## (replaced by the stitched ring), heights and textures; the portal wall
+## record and the smaller sector are removed with full index remapping.
+## Objects are untouched (world positions, no sector references). Returns
+## the check result; on failure nothing has been mutated.
+static func merge_sectors_at_portal(data: LevelData, wall_id: int) -> Dictionary:
+	var plan := check_portal_merge(data, wall_id)
+	if not plan["ok"]:
+		return plan
+	var survivor: int = plan["survivor"]
+	var removed: int = plan["removed"]
+	var sector: Dictionary = data.sectors[survivor]
+	sector["walls"] = (plan["merged_walls"] as Array).duplicate()
+	# The removed sector's walls now bound the survivor.
+	for wid in plan["merged_walls"]:
+		var mw: Dictionary = data.walls[wid]
+		if mw["front"] == removed:
+			mw["front"] = survivor
+		if mw["back"] == removed:
+			mw["back"] = survivor
+	data.sectors.remove_at(removed)
+	for mw in data.walls:
+		if mw["front"] > removed:
+			mw["front"] -= 1
+		if mw["back"] > removed:
+			mw["back"] -= 1
+	_remove_walls(data, [wall_id])
+	_remove_orphan_points(data)
+	return plan
+
+
 ## _ray_face_hit(...) -> Vector2 (t, 0) or (-1, 0)
 ##
 ## Ray vs a sector face: its slope plane when valid, else the flat height.
@@ -835,6 +1002,122 @@ static func _remove_orphan_points(data: LevelData) -> void:
 	for w in data.walls:
 		w["a"] = index_map.get(w["a"], w["a"])
 		w["b"] = index_map.get(w["b"], w["b"])
+
+
+## _loop_point_ids(data, wall_ids) -> Array[int]
+##
+## loop_to_polygon's id-level twin: chains a wall loop into ordered point
+## ids (no closing duplicate). Empty on broken or unclosed loops.
+static func _loop_point_ids(data: LevelData, wall_ids: Array) -> Array[int]:
+	var ids: Array[int] = []
+	if wall_ids.is_empty():
+		return ids
+	var first: Dictionary = data.walls[wall_ids[0]]
+	if not _valid_wall(data, first):
+		return ids
+	ids.append(first["a"])
+	ids.append(first["b"])
+	var current_id: int = first["b"]
+	var remaining: Array = wall_ids.slice(1)
+	var guard := 0
+	while not remaining.is_empty() and guard < 10000:
+		guard += 1
+		var found := -1
+		var found_next := -1
+		for i in range(remaining.size()):
+			var w: Dictionary = data.walls[remaining[i]]
+			if not _valid_wall(data, w):
+				continue
+			if w["a"] == current_id:
+				found = i
+				found_next = w["b"]
+				break
+			if w["b"] == current_id:
+				found = i
+				found_next = w["a"]
+				break
+		if found == -1:
+			return []
+		ids.append(found_next)
+		current_id = found_next
+		remaining.remove_at(found)
+	if current_id != first["a"]:
+		return []
+	ids.remove_at(ids.size() - 1)
+	return ids
+
+
+## _edge_direction(ring, a, b) -> int
+##
+## +1 when the ring traverses a->b as a consecutive pair (incl. wrap),
+## -1 for b->a, 0 when the two points are not adjacent in the ring.
+static func _edge_direction(ring: Array[int], a: int, b: int) -> int:
+	for i in range(ring.size()):
+		if ring[i] == a and ring[(i + 1) % ring.size()] == b:
+			return 1
+		if ring[i] == b and ring[(i + 1) % ring.size()] == a:
+			return -1
+	return 0
+
+
+static func _rotate_ring(ring: Array[int], start_index: int) -> Array[int]:
+	var out: Array[int] = []
+	for k in range(ring.size()):
+		out.append(ring[(start_index + k) % ring.size()])
+	return out
+
+
+## _stitch_rings(ring1, ring2, a, b) -> Array[int]
+##
+## Joins two closed point rings that share the edge a<->b into one ring
+## covering both: the long way around one ring from b to a, then the long
+## way around the other from a back to b. Requires the two rings to
+## traverse the shared edge in opposite directions (front/back semantics);
+## anything else returns empty.
+static func _stitch_rings(ring1: Array[int], ring2: Array[int], a: int, b: int) -> Array[int]:
+	var merged: Array[int] = []
+	var dir1 := _edge_direction(ring1, a, b)
+	var dir2 := _edge_direction(ring2, a, b)
+	if dir1 == 0 or dir2 == 0 or dir1 == dir2:
+		return merged
+	var long_ba: Array[int] = []
+	var long_ab: Array[int] = []
+	# A ring traversing a->b walks the portal edge that way; its long path
+	# (everything but the portal) runs b->a, starting right after a.
+	if dir1 == 1:
+		long_ba = _rotate_ring(ring1, (ring1.find(a) + 1) % ring1.size())
+	else:
+		long_ab = _rotate_ring(ring1, (ring1.find(b) + 1) % ring1.size())
+	if dir2 == 1:
+		long_ba = _rotate_ring(ring2, (ring2.find(a) + 1) % ring2.size())
+	else:
+		long_ab = _rotate_ring(ring2, (ring2.find(b) + 1) % ring2.size())
+	merged = long_ba.duplicate()
+	# long_ab = [a, ..., b]: drop a (already the last of long_ba) and b
+	# (the wrap-around returns to long_ba's first element).
+	for i in range(1, long_ab.size() - 1):
+		merged.append(long_ab[i])
+	return merged
+
+
+## _segments_cross_strict(a1, b1, a2, b2) -> bool
+##
+## Proper interior crossing only (shared or touching endpoints are not
+## crossings). The same test validate() uses for unsplit wall crossings.
+static func _segments_cross_strict(a1: Vector2, b1: Vector2, a2: Vector2, b2: Vector2) -> bool:
+	var d := b1 - a1
+	var e := b2 - a2
+	var denom := d.cross(e)
+	if absf(denom) < EPS:
+		return false
+	var f := a2 - a1
+	var t := f.cross(e) / denom
+	var u := f.cross(d) / denom
+	return t > EPS_T and t < 1.0 - EPS_T and u > EPS_T and u < 1.0 - EPS_T
+
+
+static func _merge_fail(reason: String) -> Dictionary:
+	return {"ok": false, "reason": reason, "merged_walls": [], "survivor": -1, "removed": -1}
 
 
 static func _flag_wall(data: LevelData, id: int, reason: String) -> void:

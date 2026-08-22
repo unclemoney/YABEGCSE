@@ -1,0 +1,11 @@
+PASS: shell instantiates with both views
+PASS: 3D view has a player
+PASS: controller stored the 3D player position
+PASS: 2D marker follows the 3D player
+PASS: 3D player follows the 2D marker
+PASS: 3D facing follows the 2D marker angle
+PASS: controller stored the 2D facing angle
+PASS: W (move_forward) moves the marker up-map
+PASS: marker facing follows the movement direction
+PASS: the 3D player mirrors the 2D WASD move
+ALL TESTS PASSED

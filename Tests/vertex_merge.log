@@ -1,0 +1,46 @@
+PASS: corner point found
+PASS: outward corner move is valid
+PASS: moved square validates clean
+PASS: crossing corner move is detected
+PASS: interior move without crossing stays valid
+PASS: collapsing a wall to zero length is invalid
+PASS: drag preview moves the vertex live
+PASS: crossing move rejected at release
+PASS: vertex snaps back to drag start
+PASS: rejected drag took exactly one undo snapshot
+PASS: valid move accepted at release
+PASS: valid move stands
+PASS: accepted drag adds exactly one more snapshot
+PASS: two-room fixture has a portal wall
+PASS: two-room portal passes the merge gate
+PASS: merge applies
+PASS: one sector remains
+PASS: portal wall removed, 6 walls remain (got 6)
+PASS: merged loop chains into 6 corners (got 6)
+PASS: merged area equals both rooms
+PASS: merged level validates clean
+PASS: one sector remains
+PASS: merged sector keeps the larger sector's floor height
+PASS: merged sector keeps the larger sector's textures
+PASS: object survives the merge
+PASS: object keeps its world position (deleted sector's room)
+PASS: boundary wall rejected
+PASS: reason names the boundary case
+PASS: merge_sectors_at_portal refuses the boundary wall
+PASS: rejected merge leaves the level untouched
+PASS: multi-wall portal rejected
+PASS: reason names the multi-wall case
+PASS: the second shared wall is rejected too
+PASS: inner-loop portal rejected
+PASS: reason names the inner-loop case
+PASS: cycle starts at Sector Draw
+PASS: Tab forward -> Vertex Edit
+PASS: Tab forward -> Wall Select
+PASS: cycle wraps to Sector Draw
+PASS: Shift+Tab cycles backward
+PASS: Tab key is consumed
+PASS: Tab key advances the cycle
+PASS: Shift+Tab key goes backward
+PASS: O overlays the object tool
+PASS: Tab leaves object mode into the cycle
+ALL TESTS PASSED

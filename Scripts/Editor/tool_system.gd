@@ -12,12 +12,24 @@ extends Node
 signal level_data_changed(change_type: LevelData.ChangeType)
 signal mutation_committed
 signal texture_pick_requested(aim: Dictionary)
+## Tool feedback routed to the status line / debug panel (tools never
+## touch UI themselves; EditorController wires these to UIPanels).
+signal status_requested(text: String)
+signal debug_log_requested(text: String)
 
 var _level_data: LevelData
 var _draw_tool: DrawSectorTool
 var _edit_3d_tool: Edit3DTool
 var _object_tool: ObjectTool
+var _vertex_tool: VertexEditTool
+var _wall_tool: WallSelectTool
 var _active_tool: RefCounted
+## Position in the 2D tool cycle (Sector Draw -> Vertex Edit -> Wall
+## Select); survives object-mode detours and 3D toggles.
+var _cycle_index := 0
+## World units per screen pixel (1 / 2D zoom), set down by
+## EditorController each frame so tool pick radii stay in screen px.
+var _pick_scale := 1.0
 var _pending_texture_aim := {}
 var _last_aim := {}
 ## M4 brush: what the ObjectTool places on click.
@@ -26,12 +38,14 @@ var _brush := {"type": "billboard", "art": ""}
 
 ## _ready()
 ##
-## Side-effects: creates the tool set (2D draw + 2D objects + 3D edit) and
-## activates the draw tool.
+## Side-effects: creates the tool set (the 2D cycle: draw + vertex +
+## wall, plus 2D objects and 3D edit) and activates the draw tool.
 func _ready() -> void:
 	_draw_tool = DrawSectorTool.new(self)
 	_edit_3d_tool = Edit3DTool.new(self)
 	_object_tool = ObjectTool.new(self)
+	_vertex_tool = VertexEditTool.new(self)
+	_wall_tool = WallSelectTool.new(self)
 	_active_tool = _draw_tool
 
 
@@ -49,24 +63,61 @@ func get_active_tool() -> Object:
 	return _active_tool
 
 
+## _cycle_tools() -> Array
+##
+## The 2D tool cycle, in Tab order. The object tool is deliberately not
+## part of the cycle (O key toggles it on top of the current cycle slot).
+func _cycle_tools() -> Array:
+	return [_draw_tool, _vertex_tool, _wall_tool]
+
+
+## cycle_tool(direction)
+##
+## Tab / Shift+Tab: instant switch, the active tool is deactivated before
+## the next is activated. No-op in 3D mode (the Edit3DTool owns 3D).
+func cycle_tool(direction: int) -> void:
+	if _active_tool == _edit_3d_tool or _active_tool == null:
+		return
+	_active_tool.deactivate()
+	_cycle_index = posmod(_cycle_index + direction, _cycle_tools().size())
+	_active_tool = _cycle_tools()[_cycle_index]
+	_active_tool.activate()
+
+
+## get_tool_mode_name() -> String
+##
+## Display name for the 2D canvas mode label.
+func get_tool_mode_name() -> String:
+	if _active_tool == _vertex_tool:
+		return "VERTEX EDIT"
+	if _active_tool == _wall_tool:
+		return "WALL SELECT"
+	if _active_tool == _object_tool:
+		return "OBJECT PLACE"
+	if _active_tool == _edit_3d_tool:
+		return "3D EDIT"
+	return "SECTOR DRAW"
+
+
 ## set_mode_3d(is_3d)
 ##
-## Called down by EditorController on mode switch. The 2D draw tool and
-## the 3D edit tool are swapped; tool state dies on deactivation.
+## Called down by EditorController on mode switch. The current 2D cycle
+## tool and the 3D edit tool are swapped; tool state dies on deactivation.
 func set_mode_3d(is_3d: bool) -> void:
 	if _active_tool != null:
 		_active_tool.deactivate()
 	if is_3d:
 		_active_tool = _edit_3d_tool
 	else:
-		_active_tool = _draw_tool
+		_active_tool = _cycle_tools()[_cycle_index]
 	_active_tool.activate()
 
 
 ## set_object_mode(on)
 ##
-## 2D tool switching (O key): draw sectors <-> place objects. 3D mode
-## always uses the Edit3DTool; set_mode_3d wins over this.
+## 2D tool switching (O key): the object tool overlays the current cycle
+## slot; turning it off returns to that slot. 3D mode always uses the
+## Edit3DTool; set_mode_3d wins over this.
 func set_object_mode(on: bool) -> void:
 	if _active_tool == _edit_3d_tool:
 		return
@@ -74,12 +125,36 @@ func set_object_mode(on: bool) -> void:
 	if on:
 		_active_tool = _object_tool
 	else:
-		_active_tool = _draw_tool
+		_active_tool = _cycle_tools()[_cycle_index]
 	_active_tool.activate()
 
 
 func get_brush() -> Dictionary:
 	return _brush
+
+
+## set_pick_scale(scale) / get_pick_scale() -> float
+##
+## World units per screen pixel, fed down by EditorController every frame
+## (2D mode). Tools multiply their screen-px pick radii by it.
+func set_pick_scale(scale: float) -> void:
+	_pick_scale = maxf(scale, 0.0001)
+
+
+func get_pick_scale() -> float:
+	return _pick_scale
+
+
+## request_status(text) / report_debug(text)
+##
+## Tool feedback helpers: signals up to EditorController, which calls the
+## status line / debug panel down. Tools never touch UI themselves.
+func request_status(text: String) -> void:
+	status_requested.emit(text)
+
+
+func report_debug(text: String) -> void:
+	debug_log_requested.emit(text)
 
 
 func set_brush_type(type: String) -> void:
@@ -102,12 +177,17 @@ func get_preview() -> Dictionary:
 
 ## handle_input(event, world_pos, snapped_pos) -> bool
 ##
-## 2D canvas route. Returns true when consumed.
+## 2D canvas route. Returns true when consumed. Tab / Shift+Tab cycle the
+## 2D tool modes (forward / backward) before any tool sees the event.
 func handle_input(event: InputEvent, world_pos: Vector2, snapped_pos: Vector2) -> bool:
-	if _active_tool != _draw_tool and _active_tool != _object_tool:
+	if _active_tool == null or _active_tool == _edit_3d_tool:
 		return false
 	if event is InputEventKey and event.pressed and not event.echo:
-		if (event as InputEventKey).keycode == KEY_O:
+		var key := event as InputEventKey
+		if key.keycode == KEY_TAB:
+			cycle_tool(-1 if key.shift_pressed else 1)
+			return true
+		if key.keycode == KEY_O:
 			set_object_mode(_active_tool != _object_tool)
 			return true
 	return _active_tool.handle_input(event, world_pos, snapped_pos)
@@ -384,6 +464,63 @@ func update_object_drag_z(idx: int, z: float) -> void:
 
 func end_object_drag() -> void:
 	pass
+
+
+## --- Vertex edit commits (2D Vertex mode) ------------------------------
+## Same discipline as corner drags: begin takes the undo snapshot once
+## (the drag is ONE undo step), update mutates + revalidates for live
+## preview, finish validates the final position and snaps back on a
+## crossing move.
+
+func begin_vertex_drag() -> void:
+	mutation_committed.emit()
+
+
+func update_vertex_drag(point_id: int, pos: Vector2) -> void:
+	if _level_data == null:
+		return
+	GeometryOps.move_point(_level_data, point_id, pos)
+	GeometryOps.validate(_level_data)
+	level_data_changed.emit(LevelData.ChangeType.GEOMETRY)
+
+
+## finish_vertex_drag(point_id, start_pos) -> bool
+##
+## Release of a vertex drag. The drag previewed live; the final position
+## is validated now: a move that crosses any wall snaps the vertex back
+## to start_pos and returns false (the tool flashes + logs). Returns
+## true when the move stands.
+func finish_vertex_drag(point_id: int, start_pos: Vector2) -> bool:
+	if _level_data == null:
+		return false
+	if point_id < 0 or point_id >= _level_data.points.size():
+		return false
+	var current := GeometryOps.get_point(_level_data, point_id)
+	if GeometryOps.move_causes_crossing(_level_data, point_id, current):
+		GeometryOps.move_point(_level_data, point_id, start_pos)
+		GeometryOps.validate(_level_data)
+		level_data_changed.emit(LevelData.ChangeType.GEOMETRY)
+		return false
+	return true
+
+
+## commit_merge_portal(wall_id) -> Dictionary
+##
+## Wall-select merge (Delete in Wall mode). The pure GeometryOps gate
+## runs first so a rejected merge never touches the undo stack; a
+## passing merge is one undo step. Returns the check/merge result
+## ({"ok", "reason", ...}).
+func commit_merge_portal(wall_id: int) -> Dictionary:
+	if _level_data == null:
+		return {"ok": false, "reason": "no level"}
+	var plan := GeometryOps.check_portal_merge(_level_data, wall_id)
+	if not plan["ok"]:
+		return plan
+	mutation_committed.emit()
+	var result := GeometryOps.merge_sectors_at_portal(_level_data, wall_id)
+	GeometryOps.validate(_level_data)
+	level_data_changed.emit(LevelData.ChangeType.GEOMETRY)
+	return result
 
 
 ## commit_environment(env)

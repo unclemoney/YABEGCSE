@@ -27,6 +27,8 @@ signal preferences_editor_requested
 signal preferences_applied(prefs: Dictionary)
 signal gameplay_editor_requested
 signal gameplay_applied(gameplay: Dictionary)
+## Debug-panel command: advance the 2D tool cycle (same as Tab).
+signal debug_cycle_tool
 ## Any modal panel closed (picker, environment, preferences): 3D mode
 ## re-captures the mouse.
 signal panel_closed
@@ -178,6 +180,15 @@ func set_register_watch(text: String) -> void:
 		_debug_panel.set_register_watch(text)
 
 
+## log_editor_event(text)
+##
+## Pass-through to the debug panel: tool-side rejections (invalid vertex
+## move, failed wall merge) and other editor events.
+func log_editor_event(text: String) -> void:
+	if _debug_panel != null:
+		_debug_panel.log_editor_event(text)
+
+
 func _refresh_status() -> void:
 	if _status_label == null:
 		return
@@ -299,6 +310,9 @@ func _build_ui() -> void:
 	)
 	_debug_panel.gameplay_editor_requested.connect(
 		func() -> void: gameplay_editor_requested.emit()
+	)
+	_debug_panel.debug_cycle_tool.connect(
+		func() -> void: debug_cycle_tool.emit()
 	)
 
 	# M6 panels, hosted here; created before the texture picker so the

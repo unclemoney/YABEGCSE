@@ -14,6 +14,9 @@ signal debug_import_fixture
 signal environment_editor_requested
 signal preferences_editor_requested
 signal gameplay_editor_requested
+## Debug command: advance the 2D tool cycle (Sector Draw -> Vertex Edit
+## -> Wall Select), same as pressing Tab on the canvas.
+signal debug_cycle_tool
 
 var _panel: PanelContainer
 var _list: Label
@@ -24,6 +27,8 @@ var _environment_text := ""
 var _gameplay_text := ""
 var _gameplay_log: Array[String] = []
 var _watch_text := ""
+## Ring buffer for editor-side tool events (vertex/merge rejections).
+var _editor_log: Array[String] = []
 
 ## Cap for the rendered import report so a chatty import can't blow up
 ## the panel layout.
@@ -160,10 +165,24 @@ func set_register_watch(text: String) -> void:
 	_render()
 
 
+## log_editor_event(text)
+##
+## Editor-side tool events (e.g. "Invalid vertex move: wall crossing",
+## "Wall merge failed: invalid geometry") — a small ring buffer, newest
+## last, same shape as the gameplay log.
+func log_editor_event(text: String) -> void:
+	_editor_log.append(_clip(text))
+	while _editor_log.size() > MAX_LOG_LINES:
+		_editor_log.remove_at(0)
+	_render()
+
+
 func _render() -> void:
 	if _list == null:
 		return
 	var text := _flags_text
+	if not _editor_log.is_empty():
+		text = "edit: " + "\nedit: ".join(_editor_log) + "\n" + text
 	if not _environment_text.is_empty():
 		text = _environment_text + "\n" + text
 	if not _gameplay_text.is_empty():
@@ -269,3 +288,7 @@ func _build_ui() -> void:
 	gp_edit.text = "Gameplay..."
 	gp_edit.pressed.connect(func() -> void: gameplay_editor_requested.emit())
 	buttons.add_child(gp_edit)
+	var cycle := Button.new()
+	cycle.text = "Cycle 2D tool"
+	cycle.pressed.connect(func() -> void: debug_cycle_tool.emit())
+	buttons.add_child(cycle)

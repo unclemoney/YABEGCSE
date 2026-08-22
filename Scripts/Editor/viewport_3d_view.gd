@@ -16,6 +16,10 @@ extends Node3D
 
 signal edit_input(event: InputEvent, aim: Dictionary)
 signal edit_motion(relative: Vector2, aim: Dictionary)
+## The player moved or turned (walk mode, spawn, warp, 2D marker move).
+## angle is the 2D facing: radians, 0 = +X (east), positive toward +Y
+## (map south, i.e. +Z in 3D).
+signal player_moved(position: Vector3, angle: float)
 
 @export var world_env_path: NodePath = ^"WorldEnvironment"
 @export var level_root_path: NodePath = ^"Level3DRoot"
@@ -25,6 +29,9 @@ var _level_data: LevelData
 var _spawned := false
 var _look_suppressed := false
 var _aim := {"kind": &"none"}
+var _player_reported := false
+var _last_player_pos := Vector3.ZERO
+var _last_player_angle := 0.0
 
 @onready var _world_env: WorldEnvironment = get_node_or_null(world_env_path)
 @onready var _level_root: Node3D = get_node_or_null(level_root_path)
@@ -73,6 +80,7 @@ func _ready() -> void:
 func set_level_data(data: LevelData) -> void:
 	_level_data = data
 	_spawned = false
+	_player_reported = false
 	if _player != null:
 		_player.set_level_data(data)
 	if _objects_3d != null:
@@ -179,10 +187,62 @@ func apply_preferences() -> void:
 		camera.position.y = settings.eye_height
 
 
+## update_player_position(pos, angle)
+##
+## Called down by EditorController when the 2D canvas marker moved. y
+## snaps to the sector floor under pos (the void keeps the current
+## height; the walk controller holds it from there). Marks the player as
+## spawned so the next enter_3d does not override the marker position.
+func update_player_position(pos: Vector2, angle: float) -> void:
+	if _player == null:
+		return
+	var y := _player.global_position.y
+	if _level_data != null:
+		var sector_id := GeometryOps.sector_at(_level_data, pos)
+		if sector_id != -1:
+			y = GeometryOps.floor_height_at(_level_data, sector_id, pos)
+	_player.global_position = Vector3(pos.x, y, pos.y)
+	# Facing (cos a, sin a) on the map = (-sin r, -cos r) in 3D yaw.
+	_player.rotation.y = atan2(-cos(angle), -sin(angle))
+	_spawned = true
+	# Cache the new state so the next _process does not echo it back.
+	_player_reported = true
+	_last_player_pos = _player.global_position
+	_last_player_angle = angle
+
+
 func _process(_delta: float) -> void:
 	_update_aim()
+	_report_player_motion()
 	if _sky_band != null and _sky_band.visible:
 		_follow_sky_band()
+
+
+## _report_player_motion()
+##
+## Signals the player's 3D position + 2D facing angle upward whenever
+## they change. Only runs while this view is processing (3D mode), so
+## 2D-side marker moves never echo back through here.
+func _report_player_motion() -> void:
+	if _player == null:
+		return
+	var pos := _player.global_position
+	var angle := _player_angle_2d()
+	var still := _player_reported and pos.is_equal_approx(_last_player_pos)
+	if still and is_equal_approx(angle, _last_player_angle):
+		return
+	_player_reported = true
+	_last_player_pos = pos
+	_last_player_angle = angle
+	player_moved.emit(pos, angle)
+
+
+## _player_angle_2d() -> float
+##
+## Map-plane facing of the player: 3D forward (-sin yaw, -cos yaw) read
+## as a 2D vector angle (0 = +X/east, positive toward +Y/south).
+func _player_angle_2d() -> float:
+	return Vector2(-sin(_player.rotation.y), -cos(_player.rotation.y)).angle()
 
 
 func _unhandled_input(event: InputEvent) -> void:

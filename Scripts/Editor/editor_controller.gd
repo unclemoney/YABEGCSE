@@ -23,6 +23,10 @@ enum Mode { MODE_2D, MODE_3D }
 
 var level_data: LevelData
 var mode: Mode = Mode.MODE_2D
+## Canonical player marker state (synced both ways between the views).
+var player_position := Vector3.ZERO
+## 2D facing in radians: 0 = +X (east), positive toward +Y (map south).
+var player_angle := 0.0
 
 var _serializer := LevelSerializer.new()
 var _current_path := ""
@@ -45,9 +49,11 @@ func _ready() -> void:
 	_rebind_level_data()
 	if _canvas_2d != null:
 		_canvas_2d.canvas_input.connect(_on_canvas_input)
+		_canvas_2d.player_moved_2d.connect(_on_player_moved_2d)
 	if _viewport_3d != null:
 		_viewport_3d.edit_input.connect(_on_3d_edit_input)
 		_viewport_3d.edit_motion.connect(_on_3d_edit_motion)
+		_viewport_3d.player_moved.connect(_on_player_moved)
 		var gameplay := _viewport_3d.get_gameplay()
 		if gameplay != null:
 			gameplay.message_shown.connect(_on_gameplay_message)
@@ -58,6 +64,8 @@ func _ready() -> void:
 		_tool_system.mutation_committed.connect(_push_undo_snapshot)
 		_tool_system.level_data_changed.connect(_on_level_data_changed)
 		_tool_system.texture_pick_requested.connect(_on_texture_pick_requested)
+		_tool_system.status_requested.connect(_on_tool_status)
+		_tool_system.debug_log_requested.connect(_on_tool_debug_log)
 	if _ui_panels != null:
 		_ui_panels.new_requested.connect(new_level)
 		_ui_panels.open_path_selected.connect(open_level)
@@ -79,6 +87,7 @@ func _ready() -> void:
 		_ui_panels.preferences_applied.connect(_on_preferences_applied)
 		_ui_panels.gameplay_editor_requested.connect(_on_gameplay_editor_requested)
 		_ui_panels.gameplay_applied.connect(_on_gameplay_applied)
+		_ui_panels.debug_cycle_tool.connect(_on_debug_cycle_tool)
 		_ui_panels.panel_closed.connect(_on_texture_picker_closed)
 	_apply_mode()
 
@@ -92,6 +101,8 @@ func _process(_delta: float) -> void:
 	if mode == Mode.MODE_2D:
 		if _canvas_2d != null and _tool_system != null:
 			_canvas_2d.set_preview(_tool_system.get_preview())
+			_canvas_2d.set_tool_mode("MODE: " + _tool_system.get_tool_mode_name())
+			_tool_system.set_pick_scale(1.0 / maxf(_canvas_2d.get_zoom(), 0.0001))
 			if _ui_panels != null:
 				var g := int(_canvas_2d.get_grid())
 				var s: Vector2 = _canvas_2d.get_last_snapped()
@@ -190,6 +201,48 @@ func _on_canvas_input(event: InputEvent, world_pos: Vector2, snapped_pos: Vector
 		return
 	if _tool_system.handle_input(event, world_pos, snapped_pos):
 		get_viewport().set_input_as_handled()
+
+
+## _on_player_moved(position, angle) / _on_player_moved_2d(pos, angle)
+##
+## Player marker sync. The 3D view reports walk-mode motion upward; the
+## 2D canvas reports WASD marker moves upward. This node stores the
+## canonical state and calls the other view down. Setters never emit, so
+## there is no signal cycle.
+func _on_player_moved(position: Vector3, angle: float) -> void:
+	player_position = position
+	player_angle = angle
+	if _canvas_2d != null:
+		_canvas_2d.update_player_marker(Vector2(position.x, position.z), angle)
+
+
+func _on_player_moved_2d(pos: Vector2, angle: float) -> void:
+	player_position = Vector3(pos.x, player_position.y, pos.y)
+	player_angle = angle
+	if _viewport_3d != null:
+		_viewport_3d.update_player_position(pos, angle)
+
+
+## _on_tool_status(text) / _on_tool_debug_log(text)
+##
+## Tool feedback routed down to the UI: status line messages and debug
+## panel log entries (vertex-move / wall-merge rejections).
+func _on_tool_status(text: String) -> void:
+	if _ui_panels != null:
+		_ui_panels.set_status(text)
+
+
+func _on_tool_debug_log(text: String) -> void:
+	if _ui_panels != null:
+		_ui_panels.log_editor_event(text)
+
+
+## _on_debug_cycle_tool()
+##
+## Debug-panel command: advance the 2D tool cycle (same as Tab).
+func _on_debug_cycle_tool() -> void:
+	if _tool_system != null and mode == Mode.MODE_2D:
+		_tool_system.cycle_tool(1)
 
 
 ## _on_3d_edit_input(event, aim) / _on_3d_edit_motion(relative, aim)
