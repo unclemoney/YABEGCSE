@@ -24,9 +24,11 @@ var _object_tool: ObjectTool
 var _vertex_tool: VertexEditTool
 var _wall_tool: WallSelectTool
 var _platform_tool: PlatformDrawTool
+var _platform_edit_tool: PlatformEditTool
 var _active_tool: RefCounted
 ## Position in the 2D tool cycle (Sector Draw -> Vertex Edit -> Wall
-## Select -> Platform Draw); survives object-mode detours and 3D toggles.
+## Select -> Platform Draw -> Platform Edit); survives object-mode detours
+## and 3D toggles.
 var _cycle_index := 0
 ## World units per screen pixel (1 / 2D zoom), set down by
 ## EditorController each frame so tool pick radii stay in screen px.
@@ -35,13 +37,17 @@ var _pending_texture_aim := {}
 var _last_aim := {}
 ## M4 brush: what the ObjectTool places on click.
 var _brush := {"type": "billboard", "art": ""}
+## Platform Edit selection (index into LevelData.platforms, -1 = none).
+## Shared by the 2D PlatformEditTool, the 3D Edit3DTool and the texture
+## picker; single selection only.
+var _selected_platform := -1
 
 
 ## _ready()
 ##
 ## Side-effects: creates the tool set (the 2D cycle: draw + vertex +
-## wall + platform, plus 2D objects and 3D edit) and activates the draw
-## tool.
+## wall + platform draw + platform edit, plus 2D objects and 3D edit)
+## and activates the draw tool.
 func _ready() -> void:
 	_draw_tool = DrawSectorTool.new(self)
 	_edit_3d_tool = Edit3DTool.new(self)
@@ -49,11 +55,13 @@ func _ready() -> void:
 	_vertex_tool = VertexEditTool.new(self)
 	_wall_tool = WallSelectTool.new(self)
 	_platform_tool = PlatformDrawTool.new(self)
+	_platform_edit_tool = PlatformEditTool.new(self)
 	_active_tool = _draw_tool
 
 
 func set_level_data(data: LevelData) -> void:
 	_level_data = data
+	_selected_platform = -1
 	if _active_tool != null:
 		_active_tool.deactivate()
 
@@ -71,7 +79,7 @@ func get_active_tool() -> Object:
 ## The 2D tool cycle, in Tab order. The object tool is deliberately not
 ## part of the cycle (O key toggles it on top of the current cycle slot).
 func _cycle_tools() -> Array:
-	return [_draw_tool, _vertex_tool, _wall_tool, _platform_tool]
+	return [_draw_tool, _vertex_tool, _wall_tool, _platform_tool, _platform_edit_tool]
 
 
 ## cycle_tool(direction)
@@ -99,6 +107,8 @@ func get_tool_mode_name() -> String:
 		return "OBJECT PLACE"
 	if _active_tool == _platform_tool:
 		return "PLATFORM DRAW"
+	if _active_tool == _platform_edit_tool:
+		return "PLATFORM EDIT"
 	if _active_tool == _edit_3d_tool:
 		return "3D EDIT"
 	return "SECTOR DRAW"
@@ -240,6 +250,30 @@ func pick_sector(world_pos: Vector2) -> int:
 	return GeometryOps.sector_at(_level_data, world_pos)
 
 
+## pick_platform(world_pos) -> int
+##
+## Picking helper exposed to tools (smallest containing platform).
+func pick_platform(world_pos: Vector2) -> int:
+	if _level_data == null:
+		return -1
+	return GeometryOps.platform_at(_level_data, world_pos)
+
+
+## select_platform(idx) / get_selected_platform() -> int
+##
+## Platform Edit selection, shared by the 2D PlatformEditTool and the 3D
+## Edit3DTool. Out-of-range and -1 both clear the selection.
+func select_platform(idx: int) -> void:
+	if _level_data == null or idx < 0 or idx >= _level_data.platforms.size():
+		_selected_platform = -1
+	else:
+		_selected_platform = idx
+
+
+func get_selected_platform() -> int:
+	return _selected_platform
+
+
 ## commit_loop(verts)
 ##
 ## Closes a drawn loop into a sector. One mutation = one undo step.
@@ -275,6 +309,39 @@ func commit_platform(verts: Array) -> void:
 	_level_data.platforms.append(platform)
 	GeometryOps.validate(_level_data)
 	level_data_changed.emit(LevelData.ChangeType.OBJECTS)
+
+
+## commit_platform_delete(idx)
+##
+## Platform Edit (Delete key): removes one drawn platform overlay. One
+## mutation = one undo step (undo snapshots carry platforms).
+func commit_platform_delete(idx: int) -> void:
+	if _level_data == null or idx < 0 or idx >= _level_data.platforms.size():
+		return
+	mutation_committed.emit()
+	_level_data.platforms.remove_at(idx)
+	if _selected_platform == idx:
+		_selected_platform = -1
+	elif _selected_platform > idx:
+		_selected_platform -= 1
+	GeometryOps.validate(_level_data)
+	level_data_changed.emit(LevelData.ChangeType.OBJECTS)
+
+
+## commit_platform_toggle_visible(idx) -> bool
+##
+## Platform Edit (V key): flips is_visible. Invisible platforms skip 3D
+## mesh generation and draw as a dashed outline only in 2D. Returns the
+## new visibility. One mutation = one undo step.
+func commit_platform_toggle_visible(idx: int) -> bool:
+	if _level_data == null or idx < 0 or idx >= _level_data.platforms.size():
+		return false
+	mutation_committed.emit()
+	var platform: PlatformData = _level_data.platforms[idx]
+	platform.is_visible = not platform.is_visible
+	GeometryOps.validate(_level_data)
+	level_data_changed.emit(LevelData.ChangeType.OBJECTS)
+	return platform.is_visible
 
 
 ## request_delete(sector_id)
@@ -366,8 +433,11 @@ func request_texture_pick(aim: Dictionary) -> void:
 
 ## commit_texture(tex_name)
 ##
-## Applies a library-relative texture name to the face/wall remembered by
-## request_texture_pick. One mutation = one undo step.
+## Applies a library-relative texture name to the face/wall/object/
+## platform remembered by request_texture_pick (platform aims carry
+## {"kind": &"platform", "platform_id": int} — this is the shared path
+## for Platform Edit texturing in both 2D and 3D). One mutation = one
+## undo step.
 func commit_texture(tex_name: String) -> void:
 	if _level_data == null:
 		return
@@ -389,6 +459,10 @@ func commit_texture(tex_name: String) -> void:
 		var wall_id := int(aim.get("wall_id", -1))
 		if wall_id >= 0 and wall_id < _level_data.walls.size():
 			_level_data.walls[wall_id]["texture"] = tex_name
+	elif kind == &"platform":
+		var platform_id := int(aim.get("platform_id", -1))
+		if platform_id >= 0 and platform_id < _level_data.platforms.size():
+			_level_data.platforms[platform_id].texture = tex_name
 	else:
 		var sector_id := int(aim.get("sector_id", -1))
 		if sector_id >= 0 and sector_id < _level_data.sectors.size():

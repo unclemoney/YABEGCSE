@@ -45,6 +45,7 @@ var _debug_panel: DebugPanel
 var _environment_panel: EnvironmentPanel
 var _preferences_panel: PreferencesPanel
 var _gameplay_panel: GameplayPanel
+var _help_panel: HelpPanel
 var _texture_picker: TexturePicker
 var _crosshair: ColorRect
 
@@ -80,6 +81,15 @@ func set_cursor_info(text: String) -> void:
 
 func toggle_debug_panel() -> void:
 	_debug_panel.toggle()
+
+
+## toggle_help_panel()
+##
+## F1 route (called down by EditorController): opens/closes the help
+## panel (docs/EDITOR_CONTROLS.md viewer).
+func toggle_help_panel() -> void:
+	if _help_panel != null:
+		_help_panel.toggle()
 
 
 ## set_debug_flags(flagged_sectors, flagged_walls, flagged_objects, flagged_platforms)
@@ -356,6 +366,27 @@ func _build_ui() -> void:
 		func(tex_name: String) -> void: texture_picked.emit(tex_name)
 	)
 	_texture_picker.closed.connect(func() -> void: texture_picker_closed.emit())
+
+	# Issue 6: help panel (F1 / "?" button) — a read-only viewer for
+	# docs/EDITOR_CONTROLS.md, hosted like the other modal panels.
+	_help_panel = HelpPanel.new()
+	_help_panel.visible = false
+	add_child(_help_panel)
+	_help_panel.set_anchors_preset(Control.PRESET_FULL_RECT, true)
+	_help_panel.closed.connect(func() -> void: panel_closed.emit())
+
+	# "?" help button: top-right corner, below the 2D tool-mode label
+	# (which owns the exact 8 px corner margin per Issue 3).
+	var help_button := Button.new()
+	help_button.text = "?"
+	help_button.tooltip_text = "Editor controls (F1)"
+	add_child(help_button)
+	help_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	help_button.offset_left = -36.0
+	help_button.offset_right = -8.0
+	help_button.offset_top = 36.0
+	help_button.offset_bottom = 60.0
+	help_button.pressed.connect(func() -> void: _help_panel.toggle())
 
 	# Crosshair: the 3D edit cursor (mouse is captured in 3D mode).
 	_crosshair = ColorRect.new()

@@ -32,6 +32,10 @@ func _begin() -> void:
 	_test_platform_draw_tool_input()
 	_test_shift_h_l_key_route()
 	_test_platform_duplicate_independence()
+	_test_zero_height_sector_aim()
+	_test_angled_aim_inner_sector()
+	_test_platform_edit_tool()
+	_test_platform_visibility()
 	_finish()
 
 
@@ -326,6 +330,73 @@ func _test_shift_h_l_key_route() -> void:
 	_release(ts)
 
 
+## Root-cause regression for the live flush-pillar failure: a STANDING
+## camera aims at an angle, so the crosshair ray crosses the inner sector's
+## portal-wall plane before it reaches the top face. A wall hit only counts
+## where the wall has a rendered face at the hit height
+## (GeometryOps._wall_has_face_at): a flush inner sector renders no wall
+## (its floors and ceilings match the room's), so the ray must pass through
+## to the floor hit that the innermost-sector remap needs.
+func _test_angled_aim_inner_sector() -> void:
+	var data := LevelData.create_empty()
+	GeometryOps.close_loop_from_positions(data, _square(0, 0, 256))  # room
+	GeometryOps.close_loop_from_positions(data, _square(64, 64, 64))  # inner
+	var origin := Vector3(32, 140, 32)  # eye height, standing in the room
+	var dir := (Vector3(96, 0, 96) - origin).normalized()  # at the inner top face
+	# Freshly drawn inner sector: same heights as the room, no wall face
+	# anywhere on its boundary.
+	var aim := GeometryOps.aim_from_ray(data, origin, dir)
+	_check(aim.get("kind", &"none") == &"floor",
+		"angled aim at a flush inner sector is a floor hit, not a phantom wall")
+	_check(int(aim.get("sector_id", -1)) == 1, "angled aim selects the inner sector")
+	var ts := _make_tool_system(data)
+	var tool := Edit3DTool.new(ts)
+	# The wheel now edits the inner sector's floor (not a wall offset).
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+	wheel.pressed = true
+	tool.handle_input(wheel, aim)
+	_check(float(data.sectors[1]["floor_height"]) == 8.0,
+		"wheel raised the flush inner sector's floor")
+	_check(float(data.walls[4]["offset_u"]) == 0.0, "wheel did not touch wall offsets")
+	# Shift+L brings it back down to the room floor.
+	var shift_l := InputEventKey.new()
+	shift_l.keycode = KEY_L
+	shift_l.pressed = true
+	shift_l.shift_pressed = true
+	tool.handle_input(shift_l, aim)
+	_check(float(data.sectors[1]["floor_height"]) == 0.0, "Shift+L matched the inner floor")
+	# A literal zero-height pillar (floor == ceiling == room floor) DOES
+	# render a wall (room-side lintel spans floor..ceiling), so the wall hit
+	# is on a real face and stands.
+	data.sectors[1]["floor_height"] = 0.0
+	data.sectors[1]["ceiling_height"] = 0.0
+	GeometryOps.validate(data)
+	var column := GeometryOps.aim_from_ray(data, origin, dir)
+	_check(column.get("kind", &"none") == &"wall",
+		"zero-height pillar's rendered column wall is still aimable")
+	_check(int(column.get("sector_id", -1)) == 1, "column wall belongs to the inner sector")
+	var shift_h := InputEventKey.new()
+	shift_h.keycode = KEY_H
+	shift_h.pressed = true
+	shift_h.shift_pressed = true
+	tool.handle_input(shift_h, column)
+	_check(float(data.sectors[1]["ceiling_height"]) == 256.0,
+		"Shift+H works through the column wall aim")
+	_release(ts)
+	# A doorway passage is phantom too: aiming through a flat portal (equal
+	# floors, equal ceilings) at the next room's floor must not stop on the
+	# portal wall plane.
+	var halls := LevelData.create_empty()
+	GeometryOps.close_loop_from_positions(halls, _square(0, 0, 256))
+	GeometryOps.close_loop_from_positions(halls, _square(256, 64, 128))  # shares the x=256 wall
+	var through := GeometryOps.aim_from_ray(halls,
+		Vector3(192, 140, 128), (Vector3(320, 0, 128) - Vector3(192, 140, 128)).normalized())
+	_check(through.get("kind", &"none") == &"floor",
+		"aim through a flat portal passes the phantom wall plane")
+	_check(int(through.get("sector_id", -1)) == 1, "aim through the portal selects the far room")
+
+
 func _test_platform_duplicate_independence() -> void:
 	var p := PlatformData.new()
 	p.vertices = [Vector2(0, 0), Vector2(8, 0), Vector2(8, 8)]
@@ -338,6 +409,132 @@ func _test_platform_duplicate_independence() -> void:
 	_check(p.floor_height == 24.0, "clone does not share scalar state")
 	_check(p.vertices[0] == Vector2(0, 0), "clone does not share the vertex array")
 	_check(str(p.trigger_params["tag"]) == "a", "clone does not share trigger_params")
+
+
+## Issue 1: a zero-height inner sector (flush pillar) has no geometry for
+## the pure raycast to hit — the ray lands on the surrounding sector's
+## floor. aim_from_ray must remap the hit to the innermost sector at the
+## hit point (2D point-in-polygon), and Shift+H/L must then work on it.
+func _test_zero_height_sector_aim() -> void:
+	var data := LevelData.create_empty()
+	GeometryOps.close_loop_from_positions(data, _square(0, 0, 256))  # room
+	GeometryOps.close_loop_from_positions(data, _square(64, 64, 64))  # pillar
+	data.sectors[1]["ceiling_height"] = 0.0  # flush: floor == ceiling == room floor
+	var aim := GeometryOps.aim_from_ray(data, Vector3(96, 200, 96), Vector3(0, -1, 0))
+	_check(aim.get("kind", &"none") == &"floor", "flush pillar aim kind is floor")
+	_check(int(aim.get("sector_id", -1)) == 1,
+		"flush pillar selected via point-in-polygon, not the surrounding sector")
+	# Outside every sector: the raw raycast fallback (none here — the void
+	# has no planes).
+	var miss := GeometryOps.aim_from_ray(data, Vector3(-500, 200, -500), Vector3(0, -1, 0))
+	_check(miss.get("kind", &"none") == &"none", "void aim falls back to no hit")
+	# Shift+H on the remapped aim raises the pillar ceiling to the room's.
+	var ts := _make_tool_system(data)
+	var tool := Edit3DTool.new(ts)
+	var shift_h := InputEventKey.new()
+	shift_h.keycode = KEY_H
+	shift_h.pressed = true
+	shift_h.shift_pressed = true
+	_check(tool.handle_input(shift_h, aim), "Shift+H consumed on the remapped aim")
+	_check(float(data.sectors[1]["ceiling_height"]) == 256.0,
+		"Shift+H raised the flush pillar's ceiling to the room's")
+	_release(ts)
+
+
+## Issue 4: Platform Edit mode — cycle reaches it, click selects, V
+## toggles visibility, T textures via the shared commit_texture path,
+## Delete removes. All mutations take exactly one undo snapshot.
+func _test_platform_edit_tool() -> void:
+	var data := LevelData.create_empty()
+	GeometryOps.close_loop_from_positions(data, _square(0, 0, 256))
+	var ts := _make_tool_system(data)
+	ts.commit_platform(_square(32, 32, 64))
+	ts.commit_platform(_square(320, 320, 64))
+	for i in range(4):
+		ts.cycle_tool(1)
+	_check(ts.get_tool_mode_name() == "PLATFORM EDIT", "cycle reaches Platform Edit")
+	var emissions := [0]
+	ts.mutation_committed.connect(func() -> void: emissions[0] += 1)
+	# Hover then click selects the smallest platform under the cursor.
+	var motion := InputEventMouseMotion.new()
+	motion.position = Vector2(48, 48)
+	ts.handle_input(motion, Vector2(48, 48), Vector2(48, 48))
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	_check(ts.handle_input(click, Vector2(48, 48), Vector2(48, 48)), "select click consumed")
+	_check(ts.get_selected_platform() == 0, "platform 0 selected")
+	# V toggles visibility.
+	var vkey := InputEventKey.new()
+	vkey.keycode = KEY_V
+	vkey.pressed = true
+	_check(ts.handle_input(vkey, Vector2.ZERO, Vector2.ZERO), "V consumed")
+	_check(not data.platforms[0].is_visible, "V hid the platform")
+	ts.handle_input(vkey, Vector2.ZERO, Vector2.ZERO)
+	_check(data.platforms[0].is_visible, "V showed it again")
+	# T opens the texture picker for the selection; commit_texture applies.
+	var tkey := InputEventKey.new()
+	tkey.keycode = KEY_T
+	tkey.pressed = true
+	_check(ts.handle_input(tkey, Vector2.ZERO, Vector2.ZERO), "T consumed")
+	ts.commit_texture("BASICLIB/BOX1.png")
+	_check(data.platforms[0].texture == "BASICLIB/BOX1.png", "texture applied to platform")
+	# Delete removes the selected platform.
+	var del := InputEventKey.new()
+	del.keycode = KEY_DELETE
+	del.pressed = true
+	_check(ts.handle_input(del, Vector2.ZERO, Vector2.ZERO), "Delete consumed")
+	_check(data.platforms.size() == 1, "selected platform deleted")
+	_check(ts.get_selected_platform() == -1, "selection cleared after delete")
+	_check(emissions[0] == 4, "V x2 + texture + delete = four undo snapshots")
+	_release(ts)
+
+
+## Issue 4: invisible platforms skip 3D mesh generation, are not aimable
+## in 3D, and the visibility flag round-trips through the serializer.
+func _test_platform_visibility() -> void:
+	var data := LevelData.create_empty()
+	GeometryOps.close_loop_from_positions(data, _square(0, 0, 256))
+	var p := PlatformData.new()
+	p.vertices = [Vector2(32, 32), Vector2(96, 32), Vector2(96, 96), Vector2(32, 96)]
+	p.floor_height = 64.0
+	p.ceiling_height = 48.0
+	data.platforms.append(p)
+	GeometryOps.validate(data)
+	# Visible platform: meshed and aimable in 3D.
+	var node := Node3D.new()
+	root.add_child(node)
+	var stats := SectorMeshBuilder.build_level(node, data, 24.0)
+	_check(int(stats["platforms_built"]) == 1, "visible platform meshed")
+	var aim := GeometryOps.aim_from_ray(data, Vector3(64, 200, 64), Vector3(0, -1, 0))
+	_check(aim.get("kind", &"none") == &"platform", "visible platform aimed in 3D")
+	_check(int(aim.get("platform_id", -1)) == 0, "platform aim carries the platform id")
+	# Invisible: skipped by the mesh builder and the 3D aim, still
+	# selectable in 2D.
+	p.is_visible = false
+	stats = SectorMeshBuilder.build_level(node, data, 24.0)
+	_check(int(stats["platforms_built"]) == 0, "invisible platform skips mesh generation")
+	aim = GeometryOps.aim_from_ray(data, Vector3(64, 200, 64), Vector3(0, -1, 0))
+	_check(aim.get("kind", &"none") != &"platform", "invisible platform not aimable in 3D")
+	_check(GeometryOps.platform_at(data, Vector2(64, 64)) == 0,
+		"invisible platform still selectable in 2D")
+	# Serializer round-trip preserves the flag.
+	var serializer := LevelSerializer.new()
+	var reloaded := serializer.load_from_json(serializer.save_to_json(data))
+	_check(reloaded != null and reloaded.platforms.size() == 1, "platform round-trips")
+	if reloaded != null and reloaded.platforms.size() == 1:
+		_check(not reloaded.platforms[0].is_visible, "is_visible preserved by save/load")
+	# Default: a platform entry without is_visible loads as visible.
+	var bare := serializer.load_from_json("""
+	{
+		"header": {"format": "yabegcse-level", "version": 0},
+		"objects": [{"type": "platform", "vertices": [[0, 0], [8, 0], [8, 8]]}]
+	}
+	""")
+	_check(bare != null and bare.platforms.size() == 1
+		and bare.platforms[0].is_visible, "is_visible defaults to true on load")
+	root.remove_child(node)
+	node.free()
 
 
 func _square(x: float, y: float, size: float) -> Array:

@@ -165,11 +165,12 @@ static func _build_sector(data: LevelData, si: int, floors: Dictionary, ceilings
 ## into a top face at floor_height and a bottom face at ceiling_height
 ## (the underside), both with the platform texture. No side walls (v1:
 ## a flat floating polygon). Flagged platforms (self-intersecting, <3
-## points) are skipped and counted; nothing here ever errors.
+## points) are skipped and counted, as are invisible ones (is_visible,
+## Platform Edit V toggle); nothing here ever errors.
 static func _build_platforms(data: LevelData, platforms: Dictionary, stats: Dictionary) -> void:
 	for i in range(data.platforms.size()):
 		var p: PlatformData = data.platforms[i]
-		if p == null or data.flagged_platforms.has(i):
+		if p == null or not p.is_visible or data.flagged_platforms.has(i):
 			stats["platforms_skipped"] = int(stats["platforms_skipped"]) + 1
 			continue
 		var poly := PackedVector2Array(p.vertices)

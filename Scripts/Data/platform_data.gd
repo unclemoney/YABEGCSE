@@ -20,6 +20,9 @@ var ceiling_height: float = 16.0
 ## Art library reference (library-relative name, with extension — the
 ## same convention as sector face textures).
 var texture: String = ""
+## V key (Platform Edit): invisible platforms skip 3D mesh generation and
+## draw as a dashed outline only in 2D. Serialized; default true.
+var is_visible: bool = true
 ## Reserved for M7 gameplay.
 var is_trigger: bool = false
 ## Reserved for M7 gameplay.
@@ -30,7 +33,7 @@ var _extra: Dictionary = {}
 
 const KNOWN_FIELDS: Array[String] = [
 	"type", "vertices", "floor_height", "ceiling_height", "texture",
-	"is_trigger", "trigger_params",
+	"is_visible", "is_trigger", "trigger_params",
 ]
 
 
@@ -48,6 +51,7 @@ func to_dict() -> Dictionary:
 	out["floor_height"] = floor_height
 	out["ceiling_height"] = ceiling_height
 	out["texture"] = texture
+	out["is_visible"] = is_visible
 	out["is_trigger"] = is_trigger
 	out["trigger_params"] = trigger_params.duplicate(true)
 	return out
@@ -67,6 +71,7 @@ static func from_dict(d: Dictionary) -> PlatformData:
 	p.floor_height = float(d.get("floor_height", 0.0))
 	p.ceiling_height = float(d.get("ceiling_height", p.floor_height + 16.0))
 	p.texture = str(d.get("texture", ""))
+	p.is_visible = bool(d.get("is_visible", true))
 	p.is_trigger = bool(d.get("is_trigger", false))
 	if d.get("trigger_params") is Dictionary:
 		p.trigger_params = (d["trigger_params"] as Dictionary).duplicate(true)
@@ -86,6 +91,7 @@ func clone() -> PlatformData:
 	p.floor_height = floor_height
 	p.ceiling_height = ceiling_height
 	p.texture = texture
+	p.is_visible = is_visible
 	p.is_trigger = is_trigger
 	p.trigger_params = trigger_params.duplicate(true)
 	p._extra = _extra.duplicate(true)

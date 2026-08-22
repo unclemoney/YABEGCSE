@@ -198,9 +198,11 @@ func _test_tool_cycle() -> void:
 	ts.cycle_tool(1)
 	_check(ts.get_tool_mode_name() == "PLATFORM DRAW", "Tab forward -> Platform Draw")
 	ts.cycle_tool(1)
+	_check(ts.get_tool_mode_name() == "PLATFORM EDIT", "Tab forward -> Platform Edit")
+	ts.cycle_tool(1)
 	_check(ts.get_tool_mode_name() == "SECTOR DRAW", "cycle wraps to Sector Draw")
 	ts.cycle_tool(-1)
-	_check(ts.get_tool_mode_name() == "PLATFORM DRAW", "Shift+Tab cycles backward")
+	_check(ts.get_tool_mode_name() == "PLATFORM EDIT", "Shift+Tab cycles backward")
 	# The key-event path (the same one real canvas input takes).
 	var tab := InputEventKey.new()
 	tab.keycode = KEY_TAB
@@ -212,7 +214,7 @@ func _test_tool_cycle() -> void:
 	shift_tab.pressed = true
 	shift_tab.shift_pressed = true
 	ts.handle_input(shift_tab, Vector2.ZERO, Vector2.ZERO)
-	_check(ts.get_tool_mode_name() == "PLATFORM DRAW", "Shift+Tab key goes backward")
+	_check(ts.get_tool_mode_name() == "PLATFORM EDIT", "Shift+Tab key goes backward")
 	# The object tool sits outside the cycle: O overlays, Tab returns to
 	# the cycle.
 	ts.cycle_tool(1)  # -> SECTOR DRAW

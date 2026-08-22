@@ -649,9 +649,23 @@ static func is_sector_buildable(data: LevelData, sector_id: int) -> bool:
 ## M3 3D-mode picking: casts a ray (camera through crosshair) against all
 ## sector floors, ceilings and walls — pure math, no physics, so it runs
 ## headless. Returns the nearest hit:
-##   {"kind": &"floor"|&"ceiling"|&"wall", "sector_id": int,
-##    "wall_id": int (-1 unless wall), "point": Vector3, "distance": float}
+##   {"kind": &"floor"|&"ceiling"|&"wall"|&"platform", "sector_id": int,
+##    "wall_id": int (-1 unless wall), "platform_id": int (-1 unless
+##    platform), "point": Vector3, "distance": float}
 ## or {"kind": &"none"} when nothing is hit within MAX_AIM_DIST.
+##
+## Sector selection is NOT purely raycast-based: a floor/ceiling hit is
+## remapped to the smallest sector containing the hit point (a 2D
+## point-in-polygon query). A zero-height inner sector (flush pillar) has
+## no distinct geometry for the ray to hit — the ray lands on the
+## surrounding sector's face — so the innermost-sector remap is what makes
+## pillars selectable at all. Wall hits only count where the wall has a
+## rendered face at the hit height (_wall_has_face_at): a flush pillar's
+## portal walls render nothing, so the ray passes through them to the
+## floor/ceiling hit that the remap needs. A wall hit's sector is left
+## alone (unambiguous). Void aims (no geometry hit) return {"kind":
+## &"none"}. Visible platforms are tested as horizontal planes at their
+## top and underside; a nearer platform wins over the geometry behind it.
 const MAX_AIM_DIST := 4096.0
 
 static func aim_from_ray(data: LevelData, origin: Vector3, dir: Vector3) -> Dictionary:
@@ -695,12 +709,15 @@ static func aim_from_ray(data: LevelData, origin: Vector3, dir: Vector3) -> Dict
 		var t := origin.distance_to(p)
 		if t >= best_t or t < EPS:
 			continue
-		# Within the wall segment and its vertical span?
+		# Within the wall segment? And does the wall have a RENDERED face at
+		# the hit height? A flush pillar's portal walls render nothing (both
+		# sides share floor and ceiling heights), so they must not swallow
+		# the aim ray — the floor hit behind them is what makes zero-height
+		# inner sectors selectable via the innermost-sector remap below.
 		var u := _param_on_segment(Vector2(p.x, p.z), a2, b2)
 		if u < -EPS_T or u > 1.0 + EPS_T:
 			continue
-		var span := _wall_vertical_span(data, w)
-		if p.y < span.x - EPS or p.y > span.y + EPS:
+		if not _wall_has_face_at(data, w, p.y):
 			continue
 		best_t = t
 		best = {
@@ -710,6 +727,92 @@ static func aim_from_ray(data: LevelData, origin: Vector3, dir: Vector3) -> Dict
 			"point": p,
 			"distance": t,
 		}
+	# Innermost-sector remap: a floor/ceiling hit is re-aimed at the
+	# smallest sector containing the hit point (2D point-in-polygon). This
+	# is what makes a zero-height inner sector (flush pillar) editable: the
+	# ray can only hit the surrounding sector's face, but the hit point is
+	# inside the pillar's polygon. The face plane is re-cast for the inner
+	# sector so point/distance stay truthful.
+	var kind: StringName = best.get("kind", &"none")
+	if kind == &"floor" or kind == &"ceiling":
+		var hit_point: Vector3 = best["point"]
+		var inner := sector_at(data, Vector2(hit_point.x, hit_point.z))
+		if inner != -1 and inner != int(best["sector_id"]):
+			var face_hit := _ray_face_hit(data, inner, origin, dir, kind == &"floor")
+			if face_hit.x >= 0.0:
+				best_t = face_hit.x
+				best = {
+					"kind": kind,
+					"sector_id": inner,
+					"wall_id": -1,
+					"point": origin + dir * face_hit.x,
+					"distance": face_hit.x,
+				}
+	# Platforms (drawn polygon overlays): a visible platform plane nearer
+	# than the geometry hit wins the crosshair (Platform Edit, 3D mode).
+	var platform_hit := _ray_platform_hit(data, origin, dir, best_t)
+	if not platform_hit.is_empty():
+		best = platform_hit
+	return best
+
+
+## _ray_platform_hit(data, origin, dir, max_t) -> Dictionary
+##
+## Nearest visible platform under the ray: each platform's top face plane
+## (floor_height) and underside plane (ceiling_height) are intersected and
+## the hit point tested against the polygon (2D point-in-polygon).
+## Invisible and flagged platforms are not aimable (invisible platforms
+## are selected in 2D, where their dashed outline is drawn). Returns {}
+## when nothing is hit within max_t.
+static func _ray_platform_hit(data: LevelData, origin: Vector3, dir: Vector3, max_t: float) -> Dictionary:
+	var best := {}
+	var best_t := max_t
+	for i in range(data.platforms.size()):
+		var p: PlatformData = data.platforms[i]
+		if p == null or not p.is_visible or data.flagged_platforms.has(i):
+			continue
+		if p.vertices.size() < 3:
+			continue
+		var poly := PackedVector2Array(p.vertices)
+		for y in [p.floor_height, p.ceiling_height]:
+			var hit: Variant = Plane(Vector3.UP, y).intersects_ray(origin, dir)
+			if hit == null:
+				continue
+			var t := origin.distance_to(hit)
+			if t < EPS or t >= best_t:
+				continue
+			if not Geometry2D.is_point_in_polygon(Vector2(hit.x, hit.z), poly):
+				continue
+			best_t = t
+			best = {
+				"kind": &"platform",
+				"platform_id": i,
+				"sector_id": -1,
+				"wall_id": -1,
+				"point": hit,
+				"distance": t,
+			}
+	return best
+
+
+## platform_at(data, p) -> int
+##
+## 2D platform picking (Platform Edit mode): the smallest-area platform
+## whose polygon contains p, or -1. Flagged and invisible platforms are
+## included — both must stay selectable in 2D (to fix or re-show them).
+static func platform_at(data: LevelData, p: Vector2) -> int:
+	var best := -1
+	var best_area := INF
+	for i in range(data.platforms.size()):
+		var platform: PlatformData = data.platforms[i]
+		if platform == null or platform.vertices.size() < 3:
+			continue
+		if not Geometry2D.is_point_in_polygon(p, PackedVector2Array(platform.vertices)):
+			continue
+		var area := absf(polygon_area(PackedVector2Array(platform.vertices)))
+		if area < best_area:
+			best_area = area
+			best = i
 	return best
 
 
@@ -924,21 +1027,32 @@ static func _ray_face_hit(data: LevelData, sector_id: int, origin: Vector3, dir:
 	return Vector2(t, 0.0)
 
 
-## _wall_vertical_span(data, w) -> Vector2
+## _wall_has_face_at(data, w, y) -> bool
 ##
-## Lowest floor to highest ceiling across both sides of a wall.
-static func _wall_vertical_span(data: LevelData, w: Dictionary) -> Vector2:
-	var lo := INF
-	var hi := -INF
-	for si in [w["front"], w["back"]]:
-		if si < 0 or si >= data.sectors.size():
-			continue
-		var s: Dictionary = data.sectors[si]
-		lo = minf(lo, float(s.get("floor_height", 0.0)))
-		hi = maxf(hi, float(s.get("ceiling_height", 256.0)))
-	if lo > hi:
-		return Vector2(0.0, 256.0)
-	return Vector2(lo, hi)
+## Does the wall have a rendered surface at height y? Mirrors the mesh
+## builder's wall rule (with flat heights — the aim ray has always been
+## slope-blind on walls): a solid wall renders from its front sector's
+## floor to ceiling; a portal wall renders only the riser between the two
+## floor heights and the lintel between the two ceiling heights. Where
+## neither differs (a flush pillar's walls, the open passage of a doorway)
+## there is no face, so the aim ray must pass through instead of reporting
+## a phantom wall hit.
+static func _wall_has_face_at(data: LevelData, w: Dictionary, y: float) -> bool:
+	var fi: int = w["front"]
+	var bi: int = w["back"]
+	if fi < 0 or fi >= data.sectors.size():
+		return false
+	var front: Dictionary = data.sectors[fi]
+	var ff := float(front.get("floor_height", 0.0))
+	var fc := float(front.get("ceiling_height", 256.0))
+	if bi < 0 or bi >= data.sectors.size():
+		return y >= ff - EPS and y <= fc + EPS
+	var back: Dictionary = data.sectors[bi]
+	var bf := float(back.get("floor_height", 0.0))
+	var bc := float(back.get("ceiling_height", 256.0))
+	var riser := absf(ff - bf) > EPS and y >= minf(ff, bf) - EPS and y <= maxf(ff, bf) + EPS
+	var lintel := absf(fc - bc) > EPS and y >= minf(fc, bc) - EPS and y <= maxf(fc, bc) + EPS
+	return riser or lintel
 
 
 static func point_strictly_inside(p: Vector2, poly: PackedVector2Array) -> bool:

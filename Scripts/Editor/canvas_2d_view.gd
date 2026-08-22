@@ -36,16 +36,22 @@ var _tool_label: Label
 
 ## _ready()
 ##
-## Side-effects: builds the screen-pinned tool-mode label (top-left, 8 px
-## margin, semi-transparent black background). A CanvasLayer keeps it
-## fixed on screen over any geometry; UIPanels draws above it (later in
-## tree order at the same layer).
+## Side-effects: builds the screen-pinned tool-mode label (top-right, 8 px
+## margins, semi-transparent black background — the top-left corner belongs
+## to the 2D canvas UI buttons). A CanvasLayer keeps it fixed on screen
+## over any geometry; UIPanels draws above it (later in tree order at the
+## same layer).
 func _ready() -> void:
 	_tool_layer = CanvasLayer.new()
 	_tool_layer.name = "ToolModeLayer"
 	add_child(_tool_layer)
 	_tool_label = Label.new()
-	_tool_label.position = Vector2(8, 8)
+	# Top-right pinned, growing leftward as the mode name changes length.
+	_tool_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_tool_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_tool_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_tool_label.offset_top = 8.0
+	_tool_label.offset_right = -8.0
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.0, 0.0, 0.0, 0.55)
 	style.set_content_margin_all(4.0)
@@ -386,13 +392,21 @@ func _draw_objects() -> void:
 ## distinct from sectors (blue fill) and the M4 object markers. Flagged
 ## platforms (self-intersecting, <3 points) keep drawing but with a red
 ## border (tolerate + flag); a sub-3-point platform draws its open poly
-## line only. Dash/width scale with zoom to stay screen-constant.
+## line only. Invisible platforms (is_visible, V toggle) skip the fill and
+## draw as a dashed outline only. In Platform Edit mode the hovered /
+## selected platform gets a border highlight (cyan selected, yellow
+## hover). Dash/width scale with zoom to stay screen-constant.
 const PLATFORM_FILL := Color(1.0, 0.55, 0.1, 0.18)
 const PLATFORM_BORDER := Color(1.0, 0.6, 0.1)
 const PLATFORM_FLAG_FILL := Color(1.0, 0.25, 0.25, 0.15)
 const PLATFORM_FLAG_BORDER := Color(1.0, 0.25, 0.25)
+const PLATFORM_HIDDEN_BORDER := Color(1.0, 0.6, 0.1, 0.45)
+const PLATFORM_HOVER_BORDER := Color(1.0, 0.95, 0.4)
+const PLATFORM_SELECTED_BORDER := Color(0.3, 0.9, 1.0)
 
 func _draw_platforms() -> void:
+	var hover := int(_preview.get("platform_hover", -1))
+	var selected := int(_preview.get("platform_selected", -1))
 	for i in range(_level_data.platforms.size()):
 		var p: PlatformData = _level_data.platforms[i]
 		if p == null or p.vertices.is_empty():
@@ -402,8 +416,11 @@ func _draw_platforms() -> void:
 		if _level_data.flagged_platforms.has(i):
 			fill = PLATFORM_FLAG_FILL
 			border = PLATFORM_FLAG_BORDER
+		if not p.is_visible:
+			fill = Color(0, 0, 0, 0)  # invisible: dashed outline only
+			border = PLATFORM_HIDDEN_BORDER
 		var poly := PackedVector2Array(p.vertices)
-		if poly.size() >= 3:
+		if poly.size() >= 3 and fill.a > 0.0:
 			draw_colored_polygon(poly, fill)
 		var dash := 6.0 / _camera.zoom.x
 		var last := poly.size() - 1
@@ -412,6 +429,16 @@ func _draw_platforms() -> void:
 		for k in range(last + 1):
 			draw_dashed_line(poly[k], poly[(k + 1) % poly.size()], border,
 				2.0 / _camera.zoom.x, dash)
+		# Platform Edit selection/hover: solid border over the dashed one.
+		var ring := Color(0, 0, 0, 0)
+		if i == selected:
+			ring = PLATFORM_SELECTED_BORDER
+		elif i == hover:
+			ring = PLATFORM_HOVER_BORDER
+		if ring.a > 0.0 and poly.size() >= 3:
+			var outline := poly
+			outline.append(poly[0])
+			draw_polyline(outline, ring, 3.0 / _camera.zoom.x)
 
 
 func _visible_world_rect() -> Rect2:

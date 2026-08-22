@@ -65,4 +65,40 @@ PASS: void aim reports no sector under crosshair
 PASS: clone does not share scalar state
 PASS: clone does not share the vertex array
 PASS: clone does not share trigger_params
+PASS: flush pillar aim kind is floor
+PASS: flush pillar selected via point-in-polygon, not the surrounding sector
+PASS: void aim falls back to no hit
+PASS: Shift+H consumed on the remapped aim
+PASS: Shift+H raised the flush pillar's ceiling to the room's
+PASS: angled aim at a flush inner sector is a floor hit, not a phantom wall
+PASS: angled aim selects the inner sector
+PASS: wheel raised the flush inner sector's floor
+PASS: wheel did not touch wall offsets
+PASS: Shift+L matched the inner floor
+PASS: zero-height pillar's rendered column wall is still aimable
+PASS: column wall belongs to the inner sector
+PASS: Shift+H works through the column wall aim
+PASS: aim through a flat portal passes the phantom wall plane
+PASS: aim through the portal selects the far room
+PASS: cycle reaches Platform Edit
+PASS: select click consumed
+PASS: platform 0 selected
+PASS: V consumed
+PASS: V hid the platform
+PASS: V showed it again
+PASS: T consumed
+PASS: texture applied to platform
+PASS: Delete consumed
+PASS: selected platform deleted
+PASS: selection cleared after delete
+PASS: V x2 + texture + delete = four undo snapshots
+PASS: visible platform meshed
+PASS: visible platform aimed in 3D
+PASS: platform aim carries the platform id
+PASS: invisible platform skips mesh generation
+PASS: invisible platform not aimable in 3D
+PASS: invisible platform still selectable in 2D
+PASS: platform round-trips
+PASS: is_visible preserved by save/load
+PASS: is_visible defaults to true on load
 ALL TESTS PASSED

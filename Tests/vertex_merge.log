@@ -37,6 +37,7 @@ PASS: cycle starts at Sector Draw
 PASS: Tab forward -> Vertex Edit
 PASS: Tab forward -> Wall Select
 PASS: Tab forward -> Platform Draw
+PASS: Tab forward -> Platform Edit
 PASS: cycle wraps to Sector Draw
 PASS: Shift+Tab cycles backward
 PASS: Tab key is consumed

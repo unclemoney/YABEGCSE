@@ -85,7 +85,7 @@ func _ready() -> void:
 	highlight_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	highlight_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	highlight_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	highlight_mat.albedo_color = Color(1.0, 0.85, 0.3, 0.22)
+	highlight_mat.albedo_color = Color(1.0, 1.0, 1.0, 0.05)  # white, barely visible (Issue 2)
 	highlight_mat.disable_fog = true
 	_highlight.material_override = highlight_mat
 	_highlight.visible = false

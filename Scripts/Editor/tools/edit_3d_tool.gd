@@ -74,6 +74,18 @@ func handle_input(event: InputEvent, aim: Dictionary) -> bool:
 		if key.keycode == KEY_DELETE and kind == &"object":
 			_system.commit_object_delete(int(aim["object_id"]))
 			return true
+		# Platform Edit (3D): V toggles visibility, Delete removes.
+		if kind == &"platform":
+			var platform_id := int(aim.get("platform_id", -1))
+			if key.keycode == KEY_V:
+				var visible := _system.commit_platform_toggle_visible(platform_id)
+				_system.request_status(
+					"Platform %d %s." % [platform_id, "visible" if visible else "hidden"])
+				return true
+			if key.keycode == KEY_DELETE:
+				_system.commit_platform_delete(platform_id)
+				_system.request_status("Platform %d deleted." % platform_id)
+				return true
 		# Inner sector height shortcut: Shift+H raises the aimed sector's
 		# ceiling to its surrounding sector's ceiling, Shift+L lowers its
 		# floor to match (pillar UX).
@@ -86,6 +98,12 @@ func handle_input(event: InputEvent, aim: Dictionary) -> bool:
 		elif kind == &"object":
 			_system.begin_object_drag()
 			_obj_drag = {"object_id": int(aim["object_id"])}
+		elif kind == &"platform":
+			# Click selects the platform (shared Platform Edit selection).
+			var platform_id := int(aim.get("platform_id", -1))
+			_system.select_platform(platform_id)
+			_system.request_status(
+				"Platform %d selected. Delete removes, V toggles visibility, T textures." % platform_id)
 		else:
 			GeometryOps.slope_log("tool: grab_corner pressed but aim kind is '%s' (nothing grabbed)" % kind)
 		return true
@@ -151,6 +169,18 @@ func describe_aim(aim: Dictionary) -> String:
 		return "object %d %s  art=%s  a=%d z=%d" % [
 			object_id, o.get("type", "?"), o.get("art", ""),
 			int(o.get("angle", 0.0)), int(o.get("z", 0.0)),
+		]
+	if kind == &"platform":
+		var platform_id := int(aim.get("platform_id", -1))
+		if platform_id < 0 or platform_id >= data.platforms.size():
+			return ""
+		var p: PlatformData = data.platforms[platform_id]
+		var marker := ""
+		if _system.get_selected_platform() == platform_id:
+			marker = " [selected]"
+		return "platform %d%s  h=%.1f..%.1f  tex=%s  %s [LMB: select | V: hide | Del | T: tex]" % [
+			platform_id, marker, p.floor_height, p.ceiling_height, p.texture,
+			"visible" if p.is_visible else "hidden",
 		]
 	var sector_id := int(aim.get("sector_id", -1))
 	if kind == &"wall":

@@ -139,6 +139,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		# Debug command (F9): load the gameplay fixture (see DebugPanel).
 		open_level("res://Tests/Fixtures/level_gameplay_v0.json")
 		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("help_panel"):
+		# F1: editor controls reference (docs/EDITOR_CONTROLS.md viewer).
+		if _ui_panels != null:
+			_ui_panels.toggle_help_panel()
+		get_viewport().set_input_as_handled()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		var key := event as InputEventKey
 		if key.ctrl_pressed and key.keycode == KEY_Z:
