@@ -23,15 +23,17 @@ const DEFAULT_CEILING := 256.0
 const FALLBACK_FLOOR_COLOR := Color(0.45, 0.42, 0.38)
 const FALLBACK_CEILING_COLOR := Color(0.32, 0.30, 0.28)
 const FALLBACK_WALL_COLOR := Color(0.55, 0.55, 0.58)
+const FALLBACK_PLATFORM_COLOR := Color(0.75, 0.52, 0.24)
 
 
 ## build_level(root, data, step_height) -> Dictionary
 ##
 ## Clears root and rebuilds floor/ceiling/wall mesh instances (one per
 ## distinct texture name; the untextured "" groups keep the legacy names
-## FloorMesh/CeilingMesh/WallMesh) plus CollisionBody. Returns stats:
+## FloorMesh/CeilingMesh/WallMesh), platform overlay meshes
+## (PlatformMesh*), plus CollisionBody. Returns stats:
 ## sectors_built, sectors_skipped, wall_quads, collision_faces,
-## floor_area, missing_textures.
+## platforms_built, platforms_skipped, floor_area, missing_textures.
 static func build_level(root: Node3D, data: LevelData, step_height: float) -> Dictionary:
 	var stats := {
 		"sectors_built": 0,
@@ -39,6 +41,8 @@ static func build_level(root: Node3D, data: LevelData, step_height: float) -> Di
 		"wall_quads": 0,
 		"collision_faces": 0,
 		"object_collision_quads": 0,
+		"platforms_built": 0,
+		"platforms_skipped": 0,
 		"floor_area": 0.0,
 		"missing_textures": [],
 	}
@@ -53,6 +57,7 @@ static func build_level(root: Node3D, data: LevelData, step_height: float) -> Di
 	var floors := {}
 	var ceilings := {}
 	var walls := {}
+	var platforms := {}
 	var collision := PackedVector3Array()
 
 	for si in range(data.sectors.size()):
@@ -62,10 +67,12 @@ static func build_level(root: Node3D, data: LevelData, step_height: float) -> Di
 			stats["sectors_skipped"] += 1
 	_build_walls(data, step_height, walls, collision, stats)
 	_build_object_collision(data, collision, stats)
+	_build_platforms(data, platforms, stats)
 
 	_commit_groups(root, "FloorMesh", floors, FALLBACK_FLOOR_COLOR)
 	_commit_groups(root, "CeilingMesh", ceilings, FALLBACK_CEILING_COLOR)
 	_commit_groups(root, "WallMesh", walls, FALLBACK_WALL_COLOR)
+	_commit_groups(root, "PlatformMesh", platforms, FALLBACK_PLATFORM_COLOR)
 	stats["missing_textures"] = ArtCache.take_missing()
 	if not collision.is_empty():
 		var body := StaticBody3D.new()
@@ -150,6 +157,89 @@ static func _build_sector(data: LevelData, si: int, floors: Dictionary, ceilings
 			var ceil_n := _face_normal(ca, cc, cb, false)
 			_group(ceilings, ceil_tex)["normals"].append_array([ceil_n, ceil_n, ceil_n])
 	return true
+
+
+## _build_platforms(data, platforms, stats)
+##
+## Drawn platform overlays (LevelData.platforms): each polygon triangulates
+## into a top face at floor_height and a bottom face at ceiling_height
+## (the underside), both with the platform texture. No side walls (v1:
+## a flat floating polygon). Flagged platforms (self-intersecting, <3
+## points) are skipped and counted; nothing here ever errors.
+static func _build_platforms(data: LevelData, platforms: Dictionary, stats: Dictionary) -> void:
+	for i in range(data.platforms.size()):
+		var p: PlatformData = data.platforms[i]
+		if p == null or data.flagged_platforms.has(i):
+			stats["platforms_skipped"] = int(stats["platforms_skipped"]) + 1
+			continue
+		var poly := PackedVector2Array(p.vertices)
+		var tris := Geometry2D.triangulate_polygon(poly)
+		if tris.is_empty():
+			stats["platforms_skipped"] = int(stats["platforms_skipped"]) + 1
+			continue
+		var tex := p.texture
+		var top := p.floor_height
+		var bottom := p.ceiling_height
+		for t in range(0, tris.size(), 3):
+			var a2: Vector2 = poly[tris[t]]
+			var b2: Vector2 = poly[tris[t + 1]]
+			var c2: Vector2 = poly[tris[t + 2]]
+			# Top face (the surface), facing up.
+			var ta := Vector3(a2.x, top, a2.y)
+			var tb := Vector3(b2.x, top, b2.y)
+			var tc := Vector3(c2.x, top, c2.y)
+			_group(platforms, tex)["tris"].append_array([ta, tb, tc])
+			_group(platforms, tex)["uvs"].append_array([a2, b2, c2])
+			var top_n := _face_normal(ta, tb, tc, true)
+			_group(platforms, tex)["normals"].append_array([top_n, top_n, top_n])
+			# Bottom face (the underside), reversed winding, facing down.
+			var ba := Vector3(a2.x, bottom, a2.y)
+			var bb := Vector3(b2.x, bottom, b2.y)
+			var bc := Vector3(c2.x, bottom, c2.y)
+			_group(platforms, tex)["tris"].append_array([ba, bc, bb])
+			_group(platforms, tex)["uvs"].append_array([a2, c2, b2])
+			var bottom_n := _face_normal(ba, bc, bb, false)
+			_group(platforms, tex)["normals"].append_array([bottom_n, bottom_n, bottom_n])
+		stats["platforms_built"] = int(stats["platforms_built"]) + 1
+
+
+## build_sector_highlight(data, sector_id, y_offset) -> ArrayMesh
+##
+## The 3D crosshair sector highlight (inner-sector shortcut UX): a flat
+## translucent overlay of the sector's floor, y_offset above it, inner
+## loops keyhole-bridged out and slope planes honored per vertex. The
+## view owns the node and material; triangulation lives here per the
+## skill rule. Returns null for degenerate sectors.
+static func build_sector_highlight(data: LevelData, sector_id: int, y_offset: float) -> ArrayMesh:
+	if sector_id < 0 or sector_id >= data.sectors.size():
+		return null
+	var sector: Dictionary = data.sectors[sector_id]
+	var outer := GeometryOps.loop_to_polygon(data, sector["walls"])
+	if outer.size() < 3:
+		return null
+	var holes: Array = []
+	for loop in sector["inner"]:
+		var hole := GeometryOps.loop_to_polygon(data, loop)
+		if hole.size() >= 3:
+			holes.append(hole)
+	var poly := outer
+	if not holes.is_empty():
+		poly = _merge_holes(outer, holes)
+	var tris := Geometry2D.triangulate_polygon(poly)
+	if tris.is_empty():
+		return null
+	var verts := PackedVector3Array()
+	for i in range(0, tris.size(), 3):
+		for k in range(3):
+			var p2: Vector2 = poly[tris[i + k]]
+			verts.append(Vector3(
+				p2.x, GeometryOps.floor_height_at(data, sector_id, p2) + y_offset, p2.y))
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 
 ## _build_walls(...)

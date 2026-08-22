@@ -347,6 +347,59 @@ static func validate(data: LevelData) -> void:
 	# M4: object schema-shape checks live in ObjectOps but run from the
 	# same single validation entry point.
 	ObjectOps.validate(data)
+	# Platforms (drawn polygon overlays): tolerate + flag. Fewer than 3
+	# points, a degenerate ring, or a self-intersection flags the platform;
+	# it is skipped by the mesh builder and paints red in 2D.
+	data.flagged_platforms.clear()
+	for i in range(data.platforms.size()):
+		var p: PlatformData = data.platforms[i]
+		if p == null:
+			_flag_platform(data, i, "null platform")
+			continue
+		if p.vertices.size() < 3:
+			_flag_platform(data, i, "fewer than 3 points")
+			continue
+		var poly := PackedVector2Array(p.vertices)
+		if _polygon_self_intersects(poly):
+			_flag_platform(data, i, "self-intersecting polygon")
+			continue
+		if absf(polygon_area(poly)) < EPS:
+			_flag_platform(data, i, "degenerate polygon")
+			continue
+
+
+## surrounding_sector(data, sector_id) -> int
+##
+## Inner-sector height shortcut support: the smallest-area sector whose
+## outer polygon strictly contains every vertex of the selected sector's
+## outer loop (the same containment test inner-loop registration uses).
+## -1 when no sector fully contains it.
+static func surrounding_sector(data: LevelData, sector_id: int) -> int:
+	if sector_id < 0 or sector_id >= data.sectors.size():
+		return -1
+	var inner_poly := loop_to_polygon(data, data.sectors[sector_id]["walls"])
+	if inner_poly.size() < 3:
+		return -1
+	var best := -1
+	var best_area := INF
+	for si in range(data.sectors.size()):
+		if si == sector_id:
+			continue
+		var outer := loop_to_polygon(data, data.sectors[si]["walls"])
+		if outer.size() < 3:
+			continue
+		var all_inside := true
+		for v in inner_poly:
+			if not point_strictly_inside(v, outer):
+				all_inside = false
+				break
+		if not all_inside:
+			continue
+		var area := absf(polygon_area(outer))
+		if area < best_area:
+			best_area = area
+			best = si
+	return best
 
 
 ## loop_to_polygon(data, wall_ids) -> PackedVector2Array
@@ -1125,6 +1178,30 @@ static func _flag_wall(data: LevelData, id: int, reason: String) -> void:
 		data.flagged_walls[id] += "; " + reason
 	else:
 		data.flagged_walls[id] = reason
+
+
+static func _flag_platform(data: LevelData, id: int, reason: String) -> void:
+	if data.flagged_platforms.has(id):
+		data.flagged_platforms[id] += "; " + reason
+	else:
+		data.flagged_platforms[id] = reason
+
+
+## _polygon_self_intersects(poly) -> bool
+##
+## True when any two non-adjacent edges of the ring strictly cross
+## (adjacent edges share a vertex by construction). The same strict test
+## validate() uses for unsplit wall crossings.
+static func _polygon_self_intersects(poly: PackedVector2Array) -> bool:
+	var n := poly.size()
+	for i in range(n):
+		for j in range(i + 1, n):
+			if j == i + 1 or (i == 0 and j == n - 1):
+				continue
+			if _segments_cross_strict(
+				poly[i], poly[(i + 1) % n], poly[j], poly[(j + 1) % n]):
+				return true
+	return false
 
 
 static func _flag_sector(data: LevelData, id: int, reason: String) -> void:

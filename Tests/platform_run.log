@@ -1,0 +1,74 @@
+Godot Engine v4.4.1.stable.official.49a5bc7b6 - https://godotengine.org
+
+PASS: platform appended to LevelData
+PASS: floor height defaults to sector floor at centroid
+PASS: ceiling height defaults to floor + 16 (thin platform)
+PASS: texture defaults to the current UI brush art
+PASS: trigger fields default off/empty
+PASS: one platform commit = one undo snapshot
+PASS: valid platform is not flagged
+PASS: void platform appended
+PASS: void platform floor defaults to 0
+PASS: void platform ceiling defaults to 16
+PASS: sub-3-point platform flagged
+PASS: bowtie platform flagged self-intersecting
+PASS: collinear platform flagged degenerate
+PASS: valid triangle platform not flagged
+PASS: valid platform meshed
+PASS: flagged platform skipped in mesh generation
+PASS: textured platform mesh node exists
+PASS: platform emits top + bottom faces (got 12 verts)
+PASS: top face at floor_height, underside at ceiling_height
+PASS: highlight mesh builds for a sector with an inner loop
+PASS: highlight mesh has triangles
+PASS: highlight floats at floor + offset
+PASS: highlight mesh is null for an invalid sector id
+PASS: fixture loads: 
+PASS: polygon platform reconstructed into LevelData.platforms
+PASS: pos-based platform and billboard stay in objects
+PASS: vertices preserved
+PASS: heights preserved
+PASS: texture preserved
+PASS: trigger fields preserved
+PASS: saved JSON parses
+PASS: objects section carries 2 objects + 1 platform
+PASS: platform saved with type platform
+PASS: unknown platform field round-trips
+PASS: vertices saved
+PASS: unknown top-level section survives
+PASS: re-save round-trip is stable
+PASS: reloaded platform keeps all fields
+PASS: pillar's surrounding sector is the room
+PASS: the room has no surrounding sector
+PASS: detached sector has none either
+PASS: out-of-range id tolerated
+PASS: ceiling match succeeds
+PASS: inner ceiling raised to the surrounding ceiling
+PASS: matched face slope cleared so the change is visible
+PASS: floor match succeeds
+PASS: inner floor lowered to the surrounding floor
+PASS: two matches = two undo snapshots
+PASS: outer sector rejected: no surrounding sector
+PASS: rejected shortcut never touches the undo stack
+PASS: cycle reaches Platform Draw
+PASS: vertex click consumed
+PASS: vertex click consumed
+PASS: vertex click consumed
+PASS: Enter closes the loop
+PASS: drawn platform committed
+PASS: platform drawing creates no sector
+PASS: Shift+H consumed by the edit tool
+PASS: Shift+H raised the inner ceiling to the room's
+PASS: Shift+L consumed
+PASS: Shift+L lowered the inner floor to the room's
+PASS: plain H does not fire the shortcut
+PASS: rejected shortcut reports to the status line
+PASS: void aim reports no sector under crosshair
+PASS: clone does not share scalar state
+PASS: clone does not share the vertex array
+PASS: clone does not share trigger_params
+ALL TESTS PASSED
+ERROR: Capture not registered: 'gdaimcp'.
+   at: unregister_message_capture (core/debugger/engine_debugger.cpp:69)
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+   at: cleanup (core/object/object.cpp:2378)

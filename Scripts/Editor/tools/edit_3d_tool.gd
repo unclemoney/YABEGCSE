@@ -70,8 +70,15 @@ func handle_input(event: InputEvent, aim: Dictionary) -> bool:
 			_system.commit_object_delete(int(aim["object_id"]))
 		return true
 	if event is InputEventKey and event.pressed and not event.echo:
-		if (event as InputEventKey).keycode == KEY_DELETE and kind == &"object":
+		var key := event as InputEventKey
+		if key.keycode == KEY_DELETE and kind == &"object":
 			_system.commit_object_delete(int(aim["object_id"]))
+			return true
+		# Inner sector height shortcut: Shift+H raises the aimed sector's
+		# ceiling to its surrounding sector's ceiling, Shift+L lowers its
+		# floor to match (pillar UX).
+		if key.shift_pressed and (key.keycode == KEY_H or key.keycode == KEY_L):
+			_match_surrounding(aim, key.keycode == KEY_H)
 			return true
 	if event.is_action_pressed("grab_corner"):
 		if kind == &"floor" or kind == &"ceiling":
@@ -167,6 +174,36 @@ func describe_aim(aim: Dictionary) -> String:
 
 func _slope_key(kind: StringName) -> StringName:
 	return &"floor_slope" if kind == &"floor" else &"ceiling_slope"
+
+
+## _match_surrounding(aim, ceiling)
+##
+## Shift+H / Shift+L. Any aimed face or wall of a sector selects it; the
+## commit goes through ToolSystem (undoable, one step). A sector not fully
+## contained in another is rejected with the status-bar message — the
+## spec's "Not an inner sector" and "No surrounding sector" name the same
+## condition, so the message carries both phrasings.
+func _match_surrounding(aim: Dictionary, ceiling: bool) -> void:
+	var kind: StringName = aim.get("kind", &"none")
+	var sector_id := int(aim.get("sector_id", -1))
+	if kind == &"none" or kind == &"object" or sector_id < 0:
+		_system.request_status("No sector under crosshair")
+		return
+	var face := &"ceiling" if ceiling else &"floor"
+	var result := _system.commit_match_surrounding(sector_id, face)
+	if not bool(result["ok"]):
+		_system.request_status("Not an inner sector: no surrounding sector")
+		_system.report_debug(
+			"inner-sector shortcut rejected: sector %d has no surrounding sector" % sector_id)
+		return
+	var data: LevelData = _system.get_level_data()
+	var height := 0.0
+	if data != null:
+		var key := &"ceiling_height" if ceiling else &"floor_height"
+		height = float(data.sectors[sector_id].get(key, 0.0))
+	_system.request_status("Sector %d %s matched to surrounding sector %d (h=%.1f)" % [
+		sector_id, face, int(result["surrounding"]), height,
+	])
 
 
 func _on_wheel(up: bool, event: InputEventMouseButton, aim: Dictionary) -> void:

@@ -55,6 +55,7 @@ func load_from_json(text: String) -> LevelData:
 		data.gameplay = root["gameplay"].duplicate(true)
 	if root.get("objects") is Array:
 		data.objects = root["objects"].duplicate(true)
+		_extract_platforms(data)
 		_normalize_objects(data)
 	if root.get("geometry") is Dictionary:
 		var geometry: Dictionary = root["geometry"]
@@ -115,6 +116,22 @@ static func _normalize_geometry(data: LevelData) -> void:
 			s[key] = clean
 
 
+## _extract_platforms(data)
+##
+## Drawn polygon platforms live in LevelData.platforms but serialize into
+## the objects section as {"type": "platform", "vertices": [...]}. The
+## "vertices" field is what distinguishes them from the M4/M5 pos-based
+## "platform" objects (those stay in data.objects untouched).
+static func _extract_platforms(data: LevelData) -> void:
+	var kept: Array = []
+	for o in data.objects:
+		if o is Dictionary and str(o.get("type", "")) == "platform" and o.get("vertices") is Array:
+			data.platforms.append(PlatformData.from_dict(o))
+		else:
+			kept.append(o)
+	data.objects = kept
+
+
 ## _normalize_objects(data)
 ##
 ## M4: stable types for the object schema. Unknown per-object fields pass
@@ -152,7 +169,10 @@ func save_to_json(data: LevelData) -> String:
 	geometry["walls"] = data.walls.duplicate(true)
 	geometry["sectors"] = data.sectors.duplicate(true)
 	root["geometry"] = geometry
-	root["objects"] = data.objects.duplicate(true)
+	var objects: Array = data.objects.duplicate(true)
+	for p in data.platforms:
+		objects.append(p.to_dict())
+	root["objects"] = objects
 	root["art"] = data.art.duplicate(true)
 	root["gameplay"] = data.gameplay.duplicate(true)
 	for key in data.unknown_sections:

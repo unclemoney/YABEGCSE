@@ -41,6 +41,11 @@ var _objects_3d: Objects3D
 var _gameplay: GameplayRuntime
 var _sky_band: MeshInstance3D
 var _environment_notes: Array[String] = []
+## Crosshair sector highlight (inner-sector shortcut UX): a translucent
+## overlay of the aimed sector's floor, rebuilt when the aim sector
+## changes or the level rebuilds.
+var _highlight: MeshInstance3D
+var _highlight_sector := -2  # -2 = unset (sector ids start at 0)
 
 
 func _ready() -> void:
@@ -72,6 +77,19 @@ func _ready() -> void:
 	_sky_band.material_override = sky_mat
 	_sky_band.visible = false
 	add_child(_sky_band)
+	# Sector highlight overlay: material here, mesh from SectorMeshBuilder
+	# (triangulation lives in the mesh builder per the skill rule).
+	_highlight = MeshInstance3D.new()
+	_highlight.name = "SectorHighlight"
+	var highlight_mat := StandardMaterial3D.new()
+	highlight_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	highlight_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	highlight_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	highlight_mat.albedo_color = Color(1.0, 0.85, 0.3, 0.22)
+	highlight_mat.disable_fog = true
+	_highlight.material_override = highlight_mat
+	_highlight.visible = false
+	add_child(_highlight)
 
 
 ## set_level_data(data)
@@ -102,6 +120,10 @@ func rebuild() -> Dictionary:
 	if _objects_3d != null:
 		_objects_3d.rebuild()
 	_apply_environment()
+	# Sector heights may have changed under a steady crosshair: force the
+	# highlight overlay to rebuild from the current aim.
+	_highlight_sector = -2
+	_update_highlight()
 	stats["environment_notes"] = _environment_notes.duplicate()
 	if _gameplay != null:
 		stats["gameplay_notes"] = _gameplay.revalidate()
@@ -213,9 +235,34 @@ func update_player_position(pos: Vector2, angle: float) -> void:
 
 func _process(_delta: float) -> void:
 	_update_aim()
+	_update_highlight()
 	_report_player_motion()
 	if _sky_band != null and _sky_band.visible:
 		_follow_sky_band()
+
+
+## _update_highlight()
+##
+## The aimed sector (floor, ceiling or wall hit) gets the subtle tint
+## overlay; object/void aims hide it. The mesh rebuilds only when the aim
+## sector changes (or after a level rebuild resets _highlight_sector).
+func _update_highlight() -> void:
+	if _highlight == null:
+		return
+	var kind: StringName = _aim.get("kind", &"none")
+	var sector_id := int(_aim.get("sector_id", -1))
+	if kind == &"none" or kind == &"object" or sector_id < 0:
+		_highlight.visible = false
+		_highlight_sector = -1
+		return
+	if sector_id == _highlight_sector:
+		return
+	_highlight_sector = sector_id
+	var mesh: ArrayMesh = null
+	if _level_data != null:
+		mesh = SectorMeshBuilder.build_sector_highlight(_level_data, sector_id, 0.5)
+	_highlight.mesh = mesh
+	_highlight.visible = mesh != null
 
 
 ## _report_player_motion()

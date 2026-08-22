@@ -36,6 +36,7 @@ PASS: reason names the inner-loop case
 PASS: cycle starts at Sector Draw
 PASS: Tab forward -> Vertex Edit
 PASS: Tab forward -> Wall Select
+PASS: Tab forward -> Platform Draw
 PASS: cycle wraps to Sector Draw
 PASS: Shift+Tab cycles backward
 PASS: Tab key is consumed

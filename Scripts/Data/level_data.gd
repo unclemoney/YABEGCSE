@@ -23,6 +23,10 @@ var points: Array = []
 var walls: Array = []
 var sectors: Array = []
 var objects: Array = []
+## Drawn platform overlays (PlatformData). NOT sectors: they define no
+## walls and clip/overlap anything. Serialized into the "objects" section
+## as {"type": "platform", "vertices": ...} entries.
+var platforms: Array[PlatformData] = []
 var art: Dictionary = {}
 ## Gameplay section (M7): triggers / registers / scripts / music / links.
 ## Stored verbatim (raw JSON shape); GameplayOps computes the validated
@@ -36,6 +40,7 @@ var unknown_sections: Dictionary = {}
 var flagged_sectors: Dictionary = {}  # sector id -> reason String
 var flagged_walls: Dictionary = {}  # wall id -> reason String
 var flagged_objects: Dictionary = {}  # object index -> reason String
+var flagged_platforms: Dictionary = {}  # platform index -> reason String
 
 ## Geometry schema (v0, locked in the M1 plan):
 ##   points:  [[x, y], ...]            world units, 1 unit = 6 mm

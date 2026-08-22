@@ -265,6 +265,7 @@ func _draw() -> void:
 		_draw_sectors()
 		_draw_walls()
 		_draw_objects()
+		_draw_platforms()
 	_draw_preview()
 	_draw_tool_overlay()
 	_draw_player_marker()
@@ -377,6 +378,40 @@ func _draw_objects() -> void:
 	var ghost: Variant = _preview.get("object_cursor", null)
 	if ghost is Vector2:
 		draw_arc(ghost, 8.0 / _camera.zoom.x, 0.0, TAU, 16, Color(1.0, 1.0, 1.0, 0.5), 1.0)
+
+
+## _draw_platforms()
+##
+## Drawn platform overlays: filled polygon with a dotted border, orange —
+## distinct from sectors (blue fill) and the M4 object markers. Flagged
+## platforms (self-intersecting, <3 points) keep drawing but with a red
+## border (tolerate + flag); a sub-3-point platform draws its open poly
+## line only. Dash/width scale with zoom to stay screen-constant.
+const PLATFORM_FILL := Color(1.0, 0.55, 0.1, 0.18)
+const PLATFORM_BORDER := Color(1.0, 0.6, 0.1)
+const PLATFORM_FLAG_FILL := Color(1.0, 0.25, 0.25, 0.15)
+const PLATFORM_FLAG_BORDER := Color(1.0, 0.25, 0.25)
+
+func _draw_platforms() -> void:
+	for i in range(_level_data.platforms.size()):
+		var p: PlatformData = _level_data.platforms[i]
+		if p == null or p.vertices.is_empty():
+			continue
+		var fill := PLATFORM_FILL
+		var border := PLATFORM_BORDER
+		if _level_data.flagged_platforms.has(i):
+			fill = PLATFORM_FLAG_FILL
+			border = PLATFORM_FLAG_BORDER
+		var poly := PackedVector2Array(p.vertices)
+		if poly.size() >= 3:
+			draw_colored_polygon(poly, fill)
+		var dash := 6.0 / _camera.zoom.x
+		var last := poly.size() - 1
+		if poly.size() < 3:
+			last -= 1  # open poly: no closing edge
+		for k in range(last + 1):
+			draw_dashed_line(poly[k], poly[(k + 1) % poly.size()], border,
+				2.0 / _camera.zoom.x, dash)
 
 
 func _visible_world_rect() -> Rect2:

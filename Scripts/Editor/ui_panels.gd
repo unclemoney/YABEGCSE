@@ -82,13 +82,13 @@ func toggle_debug_panel() -> void:
 	_debug_panel.toggle()
 
 
-## set_debug_flags(flagged_sectors, flagged_walls, flagged_objects)
+## set_debug_flags(flagged_sectors, flagged_walls, flagged_objects, flagged_platforms)
 ##
 ## Pass-through to the debug panel; called down by EditorController after
 ## every validation pass.
-func set_debug_flags(flagged_sectors: Dictionary, flagged_walls: Dictionary, flagged_objects: Dictionary = {}) -> void:
+func set_debug_flags(flagged_sectors: Dictionary, flagged_walls: Dictionary, flagged_objects: Dictionary = {}, flagged_platforms: Dictionary = {}) -> void:
 	if _debug_panel != null:
-		_debug_panel.set_flags(flagged_sectors, flagged_walls, flagged_objects)
+		_debug_panel.set_flags(flagged_sectors, flagged_walls, flagged_objects, flagged_platforms)
 
 
 ## set_missing_textures(names)

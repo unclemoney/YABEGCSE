@@ -551,9 +551,22 @@ func _push_undo_snapshot() -> void:
 		"walls": level_data.walls.duplicate(true),
 		"sectors": level_data.sectors.duplicate(true),
 		"objects": level_data.objects.duplicate(true),
+		"platforms": _duplicate_platforms(level_data.platforms),
 		"environment": level_data.environment.duplicate(true),
 		"gameplay": level_data.gameplay.duplicate(true),
 	})
+
+
+## _duplicate_platforms(platforms) -> Array[PlatformData]
+##
+## Deep copy for undo snapshots: PlatformData is a Resource and
+## Resource.duplicate() mishandles its typed vertex array, so the
+## explicit clone() is used.
+func _duplicate_platforms(platforms: Array) -> Array[PlatformData]:
+	var out: Array[PlatformData] = []
+	for p in platforms:
+		out.append((p as PlatformData).clone())
+	return out
 
 
 func _undo() -> void:
@@ -566,6 +579,7 @@ func _undo() -> void:
 	level_data.walls = snapshot["walls"].duplicate(true)
 	level_data.sectors = snapshot["sectors"].duplicate(true)
 	level_data.objects = snapshot.get("objects", []).duplicate(true)
+	level_data.platforms = _duplicate_platforms(snapshot.get("platforms", []))
 	level_data.environment = snapshot.get("environment", level_data.environment).duplicate(true)
 	level_data.gameplay = snapshot.get("gameplay", level_data.gameplay).duplicate(true)
 	GeometryOps.validate(level_data)
@@ -613,7 +627,8 @@ func _on_level_data_changed(_change_type: LevelData.ChangeType) -> void:
 			_ui_panels.set_gameplay_notes(stats.get("gameplay_notes", []))
 	if _ui_panels != null and level_data != null:
 		_ui_panels.set_debug_flags(
-			level_data.flagged_sectors, level_data.flagged_walls, level_data.flagged_objects
+			level_data.flagged_sectors, level_data.flagged_walls, level_data.flagged_objects,
+			level_data.flagged_platforms
 		)
 
 

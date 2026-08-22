@@ -53,11 +53,12 @@ func toggle() -> void:
 	visible = not visible
 
 
-## set_flags(flagged_sectors, flagged_walls, flagged_objects)
+## set_flags(flagged_sectors, flagged_walls, flagged_objects, flagged_platforms)
 ##
-## One line per flagged sector/wall/object with its reason. Annotations
-## are computed by GeometryOps/ObjectOps.validate — this panel displays.
-func set_flags(flagged_sectors: Dictionary, flagged_walls: Dictionary, flagged_objects: Dictionary = {}) -> void:
+## One line per flagged sector/wall/object/platform with its reason.
+## Annotations are computed by GeometryOps/ObjectOps.validate — this panel
+## displays.
+func set_flags(flagged_sectors: Dictionary, flagged_walls: Dictionary, flagged_objects: Dictionary = {}, flagged_platforms: Dictionary = {}) -> void:
 	var lines: Array[String] = []
 	for id in flagged_sectors:
 		lines.append("Sector %d: %s" % [id, flagged_sectors[id]])
@@ -65,8 +66,10 @@ func set_flags(flagged_sectors: Dictionary, flagged_walls: Dictionary, flagged_o
 		lines.append("Wall %d: %s" % [id, flagged_walls[id]])
 	for id in flagged_objects:
 		lines.append("Object %d: %s" % [id, flagged_objects[id]])
+	for id in flagged_platforms:
+		lines.append("Platform %d: %s" % [id, flagged_platforms[id]])
 	if lines.is_empty():
-		_flags_text = "No flagged sectors, walls or objects."
+		_flags_text = "No flagged sectors, walls, objects or platforms."
 	else:
 		_flags_text = "\n".join(lines)
 	_render()

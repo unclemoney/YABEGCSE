@@ -23,9 +23,10 @@ var _edit_3d_tool: Edit3DTool
 var _object_tool: ObjectTool
 var _vertex_tool: VertexEditTool
 var _wall_tool: WallSelectTool
+var _platform_tool: PlatformDrawTool
 var _active_tool: RefCounted
 ## Position in the 2D tool cycle (Sector Draw -> Vertex Edit -> Wall
-## Select); survives object-mode detours and 3D toggles.
+## Select -> Platform Draw); survives object-mode detours and 3D toggles.
 var _cycle_index := 0
 ## World units per screen pixel (1 / 2D zoom), set down by
 ## EditorController each frame so tool pick radii stay in screen px.
@@ -39,13 +40,15 @@ var _brush := {"type": "billboard", "art": ""}
 ## _ready()
 ##
 ## Side-effects: creates the tool set (the 2D cycle: draw + vertex +
-## wall, plus 2D objects and 3D edit) and activates the draw tool.
+## wall + platform, plus 2D objects and 3D edit) and activates the draw
+## tool.
 func _ready() -> void:
 	_draw_tool = DrawSectorTool.new(self)
 	_edit_3d_tool = Edit3DTool.new(self)
 	_object_tool = ObjectTool.new(self)
 	_vertex_tool = VertexEditTool.new(self)
 	_wall_tool = WallSelectTool.new(self)
+	_platform_tool = PlatformDrawTool.new(self)
 	_active_tool = _draw_tool
 
 
@@ -68,7 +71,7 @@ func get_active_tool() -> Object:
 ## The 2D tool cycle, in Tab order. The object tool is deliberately not
 ## part of the cycle (O key toggles it on top of the current cycle slot).
 func _cycle_tools() -> Array:
-	return [_draw_tool, _vertex_tool, _wall_tool]
+	return [_draw_tool, _vertex_tool, _wall_tool, _platform_tool]
 
 
 ## cycle_tool(direction)
@@ -94,6 +97,8 @@ func get_tool_mode_name() -> String:
 		return "WALL SELECT"
 	if _active_tool == _object_tool:
 		return "OBJECT PLACE"
+	if _active_tool == _platform_tool:
+		return "PLATFORM DRAW"
 	if _active_tool == _edit_3d_tool:
 		return "3D EDIT"
 	return "SECTOR DRAW"
@@ -247,6 +252,31 @@ func commit_loop(verts: Array) -> void:
 	level_data_changed.emit(LevelData.ChangeType.GEOMETRY)
 
 
+## commit_platform(verts)
+##
+## Platform Draw mode: closes a drawn loop into a PlatformData overlay
+## (NOT a sector — no walls, no containment rules). floor_height defaults
+## to the sector floor height at the polygon centroid (0 in the void),
+## ceiling_height to floor + 16 (thin platform), texture to the current
+## UI brush art. One mutation = one undo step.
+func commit_platform(verts: Array) -> void:
+	if _level_data == null or verts.size() < 3:
+		return
+	var platform := PlatformData.new()
+	for v in verts:
+		platform.vertices.append(v)
+	var centroid := platform.centroid()
+	var sector_id := GeometryOps.sector_at(_level_data, centroid)
+	if sector_id != -1:
+		platform.floor_height = GeometryOps.floor_height_at(_level_data, sector_id, centroid)
+	platform.ceiling_height = platform.floor_height + 16.0
+	platform.texture = str(_brush["art"])
+	mutation_committed.emit()
+	_level_data.platforms.append(platform)
+	GeometryOps.validate(_level_data)
+	level_data_changed.emit(LevelData.ChangeType.OBJECTS)
+
+
 ## request_delete(sector_id)
 ##
 ## Single-sector delete: an ordinary undoable edit. Batch deletes (Clear
@@ -275,6 +305,38 @@ func commit_height(sector_id: int, kind: StringName, delta: float) -> void:
 	sector[key] = float(sector.get(key, 0.0)) + delta
 	GeometryOps.validate(_level_data)
 	level_data_changed.emit(LevelData.ChangeType.GEOMETRY)
+
+
+## commit_match_surrounding(sector_id, kind) -> Dictionary
+##
+## Inner sector height shortcut (3D mode, Shift+H / Shift+L): matches the
+## selected sector's ceiling (kind &"ceiling") or floor (&"floor") height
+## to its surrounding sector's — the smallest-area sector whose polygon
+## contains all of the selected sector's vertices (GeometryOps.
+## surrounding_sector). Intended for pillars: an inner sector becomes a
+## solid column. The face's slope is cleared so the match is what the
+## player sees. One mutation = one undo step; a rejected shortcut never
+## touches the undo stack. Returns {"ok", "surrounding"|"reason"}.
+func commit_match_surrounding(sector_id: int, kind: StringName) -> Dictionary:
+	if _level_data == null:
+		return {"ok": false, "reason": "no level"}
+	if sector_id < 0 or sector_id >= _level_data.sectors.size():
+		return {"ok": false, "reason": "no sector"}
+	var outer := GeometryOps.surrounding_sector(_level_data, sector_id)
+	if outer == -1:
+		return {"ok": false, "reason": "no_surrounding"}
+	mutation_committed.emit()
+	var sector: Dictionary = _level_data.sectors[sector_id]
+	var surrounding: Dictionary = _level_data.sectors[outer]
+	if kind == &"ceiling":
+		sector["ceiling_height"] = float(surrounding.get("ceiling_height", 256.0))
+		sector["ceiling_slope"] = []
+	else:
+		sector["floor_height"] = float(surrounding.get("floor_height", 0.0))
+		sector["floor_slope"] = []
+	GeometryOps.validate(_level_data)
+	level_data_changed.emit(LevelData.ChangeType.GEOMETRY)
+	return {"ok": true, "surrounding": outer}
 
 
 ## commit_wall_offset(wall_id, du, dv)
